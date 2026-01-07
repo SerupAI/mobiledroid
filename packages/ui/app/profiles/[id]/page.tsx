@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Square, Settings, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
-import { DeviceViewer } from '@/components/DeviceViewer';
+import { DeviceViewerWS } from '@/components/DeviceViewerWS';
 import { DeviceControls } from '@/components/DeviceControls';
 import { TaskInput } from '@/components/TaskInput';
 import { api } from '@/lib/api';
@@ -19,14 +19,14 @@ export default function ProfilePage() {
   const { data: profile, isLoading, error } = useQuery({
     queryKey: ['profile', profileId],
     queryFn: () => api.getProfile(profileId),
-    refetchInterval: 3000,
+    refetchInterval: 10000, // Reduced from 3s to 10s
   });
 
   const { data: tasksData } = useQuery({
     queryKey: ['tasks', profileId],
     queryFn: () => api.getTasks(profileId),
     enabled: profile?.status === 'running',
-    refetchInterval: 2000,
+    refetchInterval: 5000, // Reduced from 2s to 5s
   });
 
   const stopMutation = useMutation({
@@ -136,7 +136,7 @@ export default function ProfilePage() {
             {/* Device viewer */}
             <div>
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-                <DeviceViewer profileId={profileId} onTap={handleTap} />
+                <DeviceViewerWS profileId={profileId} onTap={handleTap} />
                 <div className="mt-4">
                   <DeviceControls profileId={profileId} />
                 </div>
@@ -206,8 +206,8 @@ export default function ProfilePage() {
                     {profile.fingerprint.android_version}
                   </div>
                   <div>
-                    <span className="text-gray-500">ADB Port:</span>{' '}
-                    {profile.adb_port || '-'}
+                    <span className="text-gray-500">SDK:</span>{' '}
+                    {profile.fingerprint.sdk_version}
                   </div>
                   <div>
                     <span className="text-gray-500">Screen:</span>{' '}
@@ -217,6 +217,14 @@ export default function ProfilePage() {
                   <div>
                     <span className="text-gray-500">DPI:</span>{' '}
                     {profile.fingerprint.screen.dpi}
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Container ID:</span>{' '}
+                    <span className="text-xs font-mono">{profile.container_id?.substring(0, 12) || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">ADB Address:</span>{' '}
+                    <span className="text-xs">mobiledroid-{profile.id}:5555</span>
                   </div>
                 </div>
               </div>

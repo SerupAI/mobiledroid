@@ -10,6 +10,7 @@ from src.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from src.models.task import Task
+    from src.models.snapshot import Snapshot
 
 import enum
 
@@ -70,6 +71,12 @@ class Profile(Base, TimestampMixin):
     # Relationships
     tasks: Mapped[list["Task"]] = relationship(
         "Task",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+    )
+    
+    snapshots: Mapped[list["Snapshot"]] = relationship(
+        "Snapshot",
         back_populates="profile",
         cascade="all, delete-orphan",
     )

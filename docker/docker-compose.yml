@@ -41,8 +41,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ws-scrcpy:
-        condition: service_started
     restart: unless-stopped
 
   # Web UI
@@ -61,18 +59,18 @@ services:
       - api
     restart: unless-stopped
 
-  # ws-scrcpy for web-based device viewing
-  ws-scrcpy:
-    image: node:20-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm start"
-    ports:
-      - "${SCRCPY_PORT:-8186}:8886"
-    volumes:
-      - ws-scrcpy-data:/app
-    networks:
-      - mobiledroid_network
-    restart: unless-stopped
+  # ws-scrcpy for web-based device viewing (disabled for now)
+  # ws-scrcpy:
+  #   image: node:20-alpine
+  #   working_dir: /app
+  #   command: sh -c "npm install && npm start"
+  #   ports:
+  #     - "${SCRCPY_PORT:-8186}:8886"
+  #   volumes:
+  #     - ws-scrcpy-data:/app
+  #   networks:
+  #     - mobiledroid_network
+  #   restart: unless-stopped
 
 networks:
   mobiledroid_network:

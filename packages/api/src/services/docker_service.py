@@ -238,9 +238,127 @@ class DockerService:
 
             await asyncio.sleep(2)
 
-    def list_containers(self) -> list[Container]:
-        """List all mobiledroid containers."""
-        return self.client.containers.list(
-            all=True,
-            filters={"name": "mobiledroid-"},
-        )
+    async def list_containers(self, filters: dict | None = None) -> list[dict]:
+        """List containers with optional filters."""
+        if filters is None:
+            filters = {"name": "mobiledroid-"}
+        
+        containers = self.client.containers.list(all=True, filters=filters)
+        return [
+            {
+                "Id": c.id,
+                "Name": c.name,
+                "Status": c.status,
+                "State": c.attrs["State"]["Status"],
+                "Created": c.attrs["Created"],
+                "Labels": c.labels,
+            }
+            for c in containers
+        ]
+
+    async def commit_container(
+        self,
+        container_id: str,
+        image_tag: str,
+        message: str = "",
+    ) -> bool:
+        """Commit a container to create a new image."""
+        try:
+            container = self.client.containers.get(container_id)
+            
+            # Commit the container
+            image = container.commit(
+                repository=image_tag.split(":")[0],
+                tag=image_tag.split(":")[1] if ":" in image_tag else "latest",
+                message=message,
+            )
+            
+            logger.info(
+                "Container committed to image",
+                container_id=container_id,
+                image_id=image.id,
+                image_tag=image_tag,
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(
+                "Failed to commit container",
+                error=str(e),
+                container_id=container_id,
+            )
+            return False
+
+    async def get_image_info(self, image_tag: str) -> dict | None:
+        """Get information about a Docker image."""
+        try:
+            image = self.client.images.get(image_tag)
+            return {
+                "Id": image.id,
+                "Tags": image.tags,
+                "Size": image.attrs.get("Size", 0),
+                "Created": image.attrs.get("Created"),
+            }
+        except Exception as e:
+            logger.error("Failed to get image info", error=str(e), image_tag=image_tag)
+            return None
+
+    async def start_from_snapshot(
+        self,
+        profile_id: str,
+        fingerprint: dict[str, Any],
+        snapshot_image: str,
+        proxy: dict[str, Any] | None = None,
+    ) -> bool:
+        """Start a container from a snapshot image."""
+        container_name = f"mobiledroid-{profile_id}"
+        
+        try:
+            # Stop and remove existing container
+            try:
+                existing = self.client.containers.get(container_name)
+                existing.stop(timeout=5)
+                existing.remove()
+            except docker.errors.NotFound:
+                pass
+
+            # Use snapshot image instead of default
+            container = self.client.containers.run(
+                image=snapshot_image,
+                name=container_name,
+                detach=True,
+                privileged=True,
+                network=settings.docker_network,
+                environment={
+                    "ANDROID_ADB_SERVER_ADDRESS": "0.0.0.0",
+                },
+                labels={
+                    "profile_id": profile_id,
+                    "managed_by": "mobiledroid",
+                },
+            )
+
+            logger.info(
+                "Started container from snapshot",
+                container_id=container.id,
+                snapshot_image=snapshot_image,
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Failed to start from snapshot",
+                error=str(e),
+                snapshot_image=snapshot_image,
+            )
+            return False
+
+    async def remove_image(self, image_tag: str) -> bool:
+        """Remove a Docker image."""
+        try:
+            self.client.images.remove(image=image_tag, force=True)
+            logger.info("Image removed", image_tag=image_tag)
+            return True
+        except Exception as e:
+            logger.error("Failed to remove image", error=str(e), image_tag=image_tag)
+            return False

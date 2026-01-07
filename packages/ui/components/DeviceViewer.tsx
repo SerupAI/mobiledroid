@@ -35,7 +35,7 @@ export function DeviceViewer({ profileId, onTap }: DeviceViewerProps) {
 
     const interval = setInterval(() => {
       setImageKey((k) => k + 1);
-    }, 2000);
+    }, 200); // 200ms = 5 fps for smoother interaction
 
     return () => clearInterval(interval);
   }, [isReady]);
@@ -113,13 +113,49 @@ export function DeviceViewer({ profileId, onTap }: DeviceViewerProps) {
     );
   };
 
+  // Connection status indicators component
+  const ConnectionStatus = () => {
+    if (!readiness) return null;
+    
+    const steps = [
+      { key: 'container', label: 'Container', done: readiness.container_running, icon: Server },
+      { key: 'adb', label: 'ADB', done: readiness.adb_connected, icon: Wifi },
+      { key: 'screen', label: 'Screen', done: readiness.screen_available, icon: Monitor },
+    ];
+
+    return (
+      <div className="flex items-center gap-2 mb-3">
+        {steps.map((step) => (
+          <div key={step.key} className="flex items-center gap-1">
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                step.done
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-gray-800 text-gray-500'
+              }`}
+            >
+              <step.icon className="h-3 w-3" />
+            </div>
+            <span className={`text-xs ${step.done ? 'text-green-400' : 'text-gray-500'}`}>
+              {step.label}
+            </span>
+          </div>
+        ))}
+        <span className="text-xs text-gray-400 ml-auto">{readiness.status}</span>
+      </div>
+    );
+  };
+
   return (
     <div className="relative" ref={containerRef}>
+      {/* Connection status indicators - always visible */}
+      <ConnectionStatus />
+      
       {/* Refresh button - only show when ready */}
       {isReady && (
         <button
           onClick={refreshScreenshot}
-          className="absolute top-2 right-2 z-10 rounded-full bg-gray-800/80 p-2 text-gray-400 hover:text-white transition-colors"
+          className="absolute top-12 right-2 z-10 rounded-full bg-gray-800/80 p-2 text-gray-400 hover:text-white transition-colors"
           title="Refresh screenshot"
         >
           <RefreshCw className={`h-4 w-4 ${isImageLoading ? 'animate-spin' : ''}`} />
@@ -130,14 +166,6 @@ export function DeviceViewer({ profileId, onTap }: DeviceViewerProps) {
       <div className="aspect-phone bg-black rounded-lg overflow-hidden relative">
         {/* Not ready - show boot progress */}
         {!isReady && renderBootProgress()}
-
-        {/* Ready - show loading overlay while image loads */}
-        {isReady && isImageLoading && !imageError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/80 z-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-500 mb-2" />
-            <p className="text-sm text-gray-400">Loading screen...</p>
-          </div>
-        )}
 
         {/* Ready but image error */}
         {isReady && imageError && (
@@ -153,19 +181,35 @@ export function DeviceViewer({ profileId, onTap }: DeviceViewerProps) {
           </div>
         )}
 
-        {/* Actual screenshot image - only render when ready */}
+        {/* Actual screenshot image - always try to render when ready */}
         {isReady && (
-          <img
-            ref={imgRef}
-            key={imageKey}
-            src={`${api.getScreenshotUrl(profileId)}?t=${imageKey}`}
-            alt="Device screen"
-            className={`w-full h-full object-contain cursor-pointer ${imageError ? 'opacity-0' : ''}`}
-            onLoad={handleImageLoad}
-            onError={handleImageError}
-            onClick={handleClick}
-            draggable={false}
-          />
+          <>
+            {/* Show loading only on first load */}
+            {isImageLoading && imageKey === 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/80 z-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary-500 mb-2" />
+                <p className="text-sm text-gray-400">Loading screen...</p>
+              </div>
+            )}
+            {/* Current image */}
+            <img
+              ref={imgRef}
+              src={`${api.getScreenshotUrl(profileId)}?t=${imageKey}`}
+              alt="Device screen"
+              className={`w-full h-full object-contain cursor-pointer ${imageError || isImageLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-100`}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              onClick={handleClick}
+              draggable={false}
+            />
+            {/* Preload next image */}
+            <img
+              src={`${api.getScreenshotUrl(profileId)}?t=${imageKey + 1}`}
+              alt="Preload"
+              className="hidden"
+              aria-hidden="true"
+            />
+          </>
         )}
       </div>
     </div>

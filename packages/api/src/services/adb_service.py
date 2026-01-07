@@ -73,9 +73,15 @@ class ADBService:
     async def screenshot(self, address: str) -> bytes | None:
         """Take a screenshot of the device."""
         device = self._devices.get(address)
+
+        # Try to get device directly if not in cache
         if not device:
-            logger.warning("Device not connected", address=address)
-            return None
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return None
 
         try:
             loop = asyncio.get_event_loop()
@@ -88,6 +94,8 @@ class ADBService:
 
         except Exception as e:
             logger.error("Screenshot error", error=str(e), address=address)
+            # Clear from cache on error
+            self._devices.pop(address, None)
             return None
 
     async def screenshot_base64(self, address: str) -> str | None:
@@ -100,8 +108,15 @@ class ADBService:
     async def tap(self, address: str, x: int, y: int) -> bool:
         """Tap at coordinates."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return False
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
 
         try:
             loop = asyncio.get_event_loop()
@@ -110,6 +125,8 @@ class ADBService:
             return True
         except Exception as e:
             logger.error("Tap error", error=str(e))
+            # Clear from cache on error
+            self._devices.pop(address, None)
             return False
 
     async def swipe(
@@ -123,8 +140,15 @@ class ADBService:
     ) -> bool:
         """Swipe gesture."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return False
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
 
         try:
             loop = asyncio.get_event_loop()
@@ -136,13 +160,22 @@ class ADBService:
             return True
         except Exception as e:
             logger.error("Swipe error", error=str(e))
+            # Clear from cache on error
+            self._devices.pop(address, None)
             return False
 
     async def input_text(self, address: str, text: str) -> bool:
         """Input text."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return False
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
 
         try:
             # Escape special characters for shell
@@ -156,13 +189,22 @@ class ADBService:
             return True
         except Exception as e:
             logger.error("Input text error", error=str(e))
+            # Clear from cache on error
+            self._devices.pop(address, None)
             return False
 
     async def press_key(self, address: str, keycode: str) -> bool:
         """Press a key."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return False
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
 
         try:
             loop = asyncio.get_event_loop()
@@ -174,6 +216,8 @@ class ADBService:
             return True
         except Exception as e:
             logger.error("Key press error", error=str(e))
+            # Clear from cache on error
+            self._devices.pop(address, None)
             return False
 
     async def press_back(self, address: str) -> bool:
@@ -191,8 +235,15 @@ class ADBService:
     async def get_ui_hierarchy(self, address: str) -> str | None:
         """Get UI hierarchy XML."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return None
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return None
 
         try:
             loop = asyncio.get_event_loop()
@@ -203,13 +254,21 @@ class ADBService:
             return result
         except Exception as e:
             logger.error("UI hierarchy error", error=str(e))
+            self._devices.pop(address, None)
             return None
 
     async def shell(self, address: str, command: str) -> str | None:
         """Execute shell command."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return None
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return None
 
         try:
             loop = asyncio.get_event_loop()
@@ -220,13 +279,21 @@ class ADBService:
             return result
         except Exception as e:
             logger.error("Shell command error", error=str(e))
+            self._devices.pop(address, None)
             return None
 
     async def get_device_info(self, address: str) -> dict[str, Any] | None:
         """Get device information."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return None
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return None
 
         try:
             loop = asyncio.get_event_loop()
@@ -261,8 +328,15 @@ class ADBService:
     async def install_apk(self, address: str, apk_path: str) -> bool:
         """Install an APK."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return False
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
 
         try:
             loop = asyncio.get_event_loop()
@@ -276,8 +350,15 @@ class ADBService:
     async def launch_app(self, address: str, package: str) -> bool:
         """Launch an app by package name."""
         device = self._devices.get(address)
+        
+        # Try to get device directly if not in cache
         if not device:
-            return False
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
 
         try:
             loop = asyncio.get_event_loop()
