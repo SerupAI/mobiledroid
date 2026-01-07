@@ -31,13 +31,16 @@ The app runs on AWS EC2 at `34.235.77.142`.
 ### Deploy Code Changes
 
 ```bash
-# 1. Rsync code to EC2
+# Use the deploy script (captures git commit SHA)
+./scripts/deploy-to-ec2.sh
+
+# Or manually:
 rsync -avz --exclude 'node_modules' --exclude '.next' --exclude '__pycache__' \
   --exclude 'venv' --exclude '.git' --exclude 'terraform.tfstate*' --exclude '*.pem' \
   -e "ssh -i infra/aws/mobiledroid-key.pem" \
   ./ ubuntu@34.235.77.142:/home/ubuntu/mobiledroid/
 
-# 2. SSH in and rebuild containers
+# SSH in and rebuild containers
 ssh -i infra/aws/mobiledroid-key.pem ubuntu@34.235.77.142 \
   "cd /home/ubuntu/mobiledroid/docker && docker compose up -d --build"
 ```
@@ -118,6 +121,10 @@ DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
 # API Keys (optional, for AI agent)
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Debug mode (shows git commit SHA in UI)
+DEBUG=true
+NEXT_PUBLIC_DEBUG=true
 ```
 
 ## Terraform (AWS Infrastructure)
@@ -151,6 +158,14 @@ Security group restricts access to:
 - [ ] Multi-tenancy and user authentication
 - [ ] GitHub Actions CI/CD pipeline
 - [ ] SSL/HTTPS setup with Let's Encrypt
+- [ ] S3/MinIO integration for snapshot storage
+
+### Debug Mode
+
+When `DEBUG=true` and `NEXT_PUBLIC_DEBUG=true` are set:
+- Git commit SHA is displayed in bottom-left corner of UI
+- API health endpoint includes commit SHA
+- Build timestamp is shown in UI
 
 ### Resolved Issues
 
