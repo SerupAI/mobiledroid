@@ -24,6 +24,9 @@ class Snapshot(Base):
     
     __tablename__ = "snapshots"
     
+    # Primary key
+    id = Column(String(36), primary_key=True)
+    
     # Basic info
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
