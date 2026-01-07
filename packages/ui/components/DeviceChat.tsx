@@ -26,11 +26,19 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
 
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
-      const response = await api.request(`/chat/profiles/${profileId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/profiles/${profileId}`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ message }),
       });
-      return response as ChatResponse;
+      
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+      
+      return await response.json() as ChatResponse;
     },
     onSuccess: (data) => {
       setChatHistory(prev => [
