@@ -125,7 +125,7 @@ class ProfileService:
         return True
 
     async def start(self, profile_id: str) -> Profile | None:
-        """Start a profile's container."""
+        """Start a profile's container (synchronous - waits for boot)."""
         profile = await self.get(profile_id)
         if not profile:
             return None
@@ -190,6 +190,76 @@ class ProfileService:
                 "Started profile",
                 profile_id=profile_id,
                 adb_port=profile.adb_port,
+            )
+            return profile
+
+        except Exception as e:
+            logger.error(
+                "Failed to start profile",
+                profile_id=profile_id,
+                error=str(e),
+            )
+            profile.status = ProfileStatus.ERROR
+            await self.db.flush()
+            raise
+
+    async def start_async(self, profile_id: str) -> Profile | None:
+        """Start a profile's container asynchronously.
+
+        Returns immediately after setting status to 'starting' and launching container.
+        The boot process continues in the background.
+        Use check_ready() to monitor progress.
+        """
+        profile = await self.get(profile_id)
+        if not profile:
+            return None
+
+        if profile.status == ProfileStatus.RUNNING:
+            logger.info("Profile already running", profile_id=profile_id)
+            return profile
+
+        if profile.status == ProfileStatus.STARTING:
+            logger.info("Profile already starting", profile_id=profile_id)
+            return profile
+
+        try:
+            profile.status = ProfileStatus.STARTING
+            await self.db.flush()
+
+            # Create or start container
+            if profile.container_id:
+                # Try to start existing container
+                status = self.docker.get_container_status(profile.container_id)
+                if status == "exited":
+                    await self.docker.start_container(profile.container_id)
+                elif status is None:
+                    # Container doesn't exist, create new one
+                    container_id, adb_port = await self.docker.create_container(
+                        profile_id=profile.id,
+                        name=profile.name,
+                        fingerprint=profile.fingerprint,
+                        proxy=profile.proxy,
+                    )
+                    profile.container_id = container_id
+                    profile.adb_port = adb_port
+            else:
+                # Create new container
+                container_id, adb_port = await self.docker.create_container(
+                    profile_id=profile.id,
+                    name=profile.name,
+                    fingerprint=profile.fingerprint,
+                    proxy=profile.proxy,
+                )
+                profile.container_id = container_id
+                profile.adb_port = adb_port
+
+            await self.db.flush()
+            await self.db.refresh(profile)
+
+            logger.info(
+                "Started profile container (async)",
+                profile_id=profile_id,
+                container_id=profile.container_id,
             )
             return profile
 
@@ -290,7 +360,11 @@ class ProfileService:
         return profile
 
     async def check_ready(self, profile_id: str) -> dict[str, Any] | None:
-        """Check if device is ready for interaction."""
+        """Check if device is ready for interaction.
+
+        This method also handles the transition from 'starting' to 'running'
+        when all checks pass (self-healing for async start).
+        """
         profile = await self.get(profile_id)
         if not profile:
             return None
@@ -305,56 +379,68 @@ class ProfileService:
             "message": "Unknown state",
         }
 
-        # Check profile status
+        # Check profile status - allow starting and running to proceed with checks
         if profile.status == ProfileStatus.STOPPED:
             result["message"] = "Profile is stopped"
-            return result
-
-        if profile.status == ProfileStatus.STARTING:
-            result["message"] = "Device is booting..."
             return result
 
         if profile.status == ProfileStatus.ERROR:
             result["message"] = "Profile is in error state"
             return result
 
-        if profile.status != ProfileStatus.RUNNING:
-            result["message"] = f"Profile status: {profile.status.value}"
+        if profile.status == ProfileStatus.STOPPING:
+            result["message"] = "Profile is stopping"
             return result
 
+        # For both STARTING and RUNNING, check actual device state
         # Check container
         if profile.container_id:
             container_status = self.docker.get_container_status(profile.container_id)
             result["container_running"] = container_status == "running"
             if not result["container_running"]:
-                result["message"] = "Container not running"
+                result["message"] = "Container starting..."
                 return result
 
-        # Check ADB connection
-        if profile.adb_port:
-            try:
-                devices = await self.adb.list_devices()
-                adb_addr = self._get_adb_address(profile)
-                result["adb_connected"] = any(adb_addr in d for d in devices)
-            except Exception as e:
-                logger.debug("ADB check failed", error=str(e))
-                result["adb_connected"] = False
+        # Check ADB connection - try to connect if not connected
+        adb_addr = self._get_adb_address(profile)
+        try:
+            devices = await self.adb.list_devices()
+            result["adb_connected"] = any(adb_addr in d for d in devices)
 
-            if not result["adb_connected"]:
-                result["message"] = "ADB not connected"
-                return result
+            # If not connected but container is running, try to connect
+            if not result["adb_connected"] and result["container_running"]:
+                container_name = f"mobiledroid-{profile.id}"
+                connect_success = await self.adb.connect(container_name, 5555)
+                if connect_success:
+                    result["adb_connected"] = True
+        except Exception as e:
+            logger.debug("ADB check failed", error=str(e))
+            result["adb_connected"] = False
+
+        if not result["adb_connected"]:
+            result["message"] = "Connecting to ADB..."
+            return result
 
         # Try to get a screenshot to verify screen is ready
         try:
-            screenshot = await self.adb.screenshot(self._get_adb_address(profile))
+            screenshot = await self.adb.screenshot(adb_addr)
             result["screen_available"] = screenshot is not None and len(screenshot) > 0
         except Exception as e:
             logger.debug("Screenshot check failed", error=str(e))
             result["screen_available"] = False
 
         if not result["screen_available"]:
-            result["message"] = "Screen not available yet"
+            result["message"] = "Waiting for screen..."
             return result
+
+        # All checks passed - update status to RUNNING if still STARTING
+        if profile.status == ProfileStatus.STARTING:
+            profile.status = ProfileStatus.RUNNING
+            profile.last_started_at = datetime.utcnow()
+            await self.db.flush()
+            await self.db.refresh(profile)
+            result["status"] = ProfileStatus.RUNNING.value
+            logger.info("Profile transitioned to running", profile_id=profile_id)
 
         # All checks passed
         result["ready"] = True

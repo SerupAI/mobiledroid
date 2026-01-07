@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Play,
@@ -19,6 +20,7 @@ interface ProfileCardProps {
 }
 
 export function ProfileCard({ profile }: ProfileCardProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [isHovered, setIsHovered] = useState(false);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -57,6 +59,8 @@ export function ProfileCard({ profile }: ProfileCardProps) {
     onSuccess: () => {
       setStartTime(Date.now());
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      // Navigate to device view to show boot progress
+      router.push(`/profiles/${profile.id}`);
     },
     onError: (error: Error) => {
       alert(`Failed to start profile: ${error.message}`);
@@ -176,14 +180,14 @@ export function ProfileCard({ profile }: ProfileCardProps) {
 
       {/* Actions */}
       <div className="mt-4 flex items-center gap-2">
-        {isRunning ? (
+        {isRunning || isStarting ? (
           <>
             <Link
               href={`/profiles/${profile.id}`}
               className="flex-1 flex items-center justify-center gap-2 rounded-md bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
             >
               <Monitor className="h-4 w-4" />
-              View
+              {isStarting ? 'View Progress' : 'View'}
             </Link>
             <button
               onClick={() => stopMutation.mutate()}
@@ -204,7 +208,7 @@ export function ProfileCard({ profile }: ProfileCardProps) {
               disabled={isLoading || isStopping}
               className="flex-1 flex items-center justify-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors disabled:opacity-50"
             >
-              {isStarting ? (
+              {startMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Play className="h-4 w-4" />

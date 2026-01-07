@@ -114,9 +114,13 @@ async def start_profile(
     profile_id: str,
     service: Annotated[ProfileService, Depends(get_profile_service)],
 ) -> ProfileResponse:
-    """Start a profile's container."""
+    """Start a profile's container.
+
+    Returns immediately after launching the container.
+    Use GET /profiles/{id}/ready to monitor boot progress.
+    """
     try:
-        profile = await service.start(profile_id)
+        profile = await service.start_async(profile_id)
         if not profile:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
