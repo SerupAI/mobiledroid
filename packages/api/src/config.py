@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     app_name: str = "MobileDroid API"
     app_version: str = "0.1.0"
     debug: bool = False
+    commit_sha: str = "unknown"  # Set at build time via environment
 
     # API
     api_host: str = "0.0.0.0"

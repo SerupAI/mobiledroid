@@ -107,10 +107,16 @@ app.include_router(snapshots_router)
 @app.get("/health", tags=["health"])
 async def health_check():
     """Health check endpoint."""
-    return {
+    response = {
         "status": "healthy",
         "version": settings.app_version,
     }
+    
+    # Include commit SHA in debug mode
+    if settings.debug:
+        response["commit_sha"] = settings.commit_sha
+        
+    return response
 
 
 # Root endpoint

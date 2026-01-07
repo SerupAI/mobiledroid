@@ -1,6 +1,9 @@
 # MobileDroid API Dockerfile
 FROM python:3.11-slim
 
+# Build args
+ARG GIT_COMMIT_SHA=unknown
+
 WORKDIR /app
 
 # Install system dependencies
@@ -26,6 +29,7 @@ RUN mkdir -p /app/data
 # Environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # Expose port
 EXPOSE 8000
