@@ -1,0 +1,15 @@
+# init-fingerprint.rc
+# Android init service to run fingerprint injection early in boot
+
+service fingerprint_inject /system/bin/inject-fingerprint.sh
+    class core
+    user root
+    group root
+    oneshot
+    disabled
+
+on property:sys.boot_completed=0
+    start fingerprint_inject
+
+on early-init
+    exec -- /system/bin/inject-fingerprint.sh

@@ -1,0 +1,67 @@
+[project]
+name = "mobiledroid-api"
+version = "0.1.0"
+description = "MobileDroid Backend API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+authors = [
+    {name = "Serup.ai", email = "dev@serup.ai"}
+]
+
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    "python-dotenv>=1.0.0",
+    "sqlalchemy>=2.0.25",
+    "alembic>=1.13.1",
+    "aiosqlite>=0.19.0",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "docker>=7.0.0",
+    "adbutils>=2.0.0",
+    "httpx>=0.26.0",
+    "websockets>=12.0",
+    "Pillow>=10.2.0",
+    "anthropic>=0.18.0",
+    "openai>=1.10.0",
+    "structlog>=24.1.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "uuid6>=2024.1.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.26.0",
+    "black>=24.1.0",
+    "ruff>=0.1.14",
+    "mypy>=1.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

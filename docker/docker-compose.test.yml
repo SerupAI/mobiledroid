@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # API Tests
+  api-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///:memory:
+      - PYTHONPATH=/app
+      - DEBUG=true
+    command: >
+      pytest tests/ -v --tb=short --junitxml=/app/test-results/junit.xml
+    volumes:
+      - test-results:/app/test-results
+
+  # Unit tests only (faster)
+  unit-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///:memory:
+      - PYTHONPATH=/app
+    command: pytest tests/unit -v --tb=short
+    profiles:
+      - unit
+
+  # Integration tests only
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///:memory:
+      - PYTHONPATH=/app
+    command: pytest tests/integration -v --tb=short
+    profiles:
+      - integration
+
+  # E2E tests only
+  e2e-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///:memory:
+      - PYTHONPATH=/app
+    command: pytest tests/e2e -v --tb=short
+    profiles:
+      - e2e
+
+  # Coverage report
+  coverage-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///:memory:
+      - PYTHONPATH=/app
+    command: >
+      pytest tests/ -v --tb=short
+      --cov=src --cov-report=html:/app/coverage --cov-report=xml:/app/coverage/coverage.xml
+    volumes:
+      - coverage-results:/app/coverage
+    profiles:
+      - coverage
+
+volumes:
+  test-results:
+  coverage-results:

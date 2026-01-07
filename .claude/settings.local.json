@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(echo:*)",
+      "Bash(export DOCKER_HOST=ssh://adrna@192.168.1.26)",
+      "Bash(docker ps:*)",
+      "Bash(ssh:*)",
+      "Bash(docker compose:*)",
+      "Bash(curl:*)",
+      "Bash(docker exec:*)",
+      "Bash(./scripts/run-tests.sh:*)",
+      "Bash(source:*)",
+      "Bash(pytest:*)",
+      "Bash(docker logs:*)",
+      "Bash(export DOCKER_HOST_IP=\"192.168.1.26\")",
+      "Bash(export API_PORT=\"8100\")",
+      "Bash(docker volume ls:*)",
+      "Bash(docker run:*)",
+      "Bash(docker info:*)",
+      "Bash(terraform init:*)",
+      "Bash(terraform plan:*)",
+      "Bash(pkill:*)",
+      "Bash(TF_LOG=ERROR terraform plan:*)",
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws ec2 describe-instances:*)",
+      "Bash(cat:*)",
+      "Bash(rsync:*)",
+      "Bash(aws ec2 revoke-security-group-ingress:*)",
+      "Bash(aws ec2 authorize-security-group-ingress:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

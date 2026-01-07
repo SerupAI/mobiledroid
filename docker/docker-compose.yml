@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=mobiledroid
+      - POSTGRES_PASSWORD=mobiledroid
+      - POSTGRES_DB=mobiledroid
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mobiledroid_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mobiledroid"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # API Server
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "${API_PORT:-8100}:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Config is copied during build, not mounted (for remote Docker hosts)
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCKER_NETWORK=mobiledroid_network
+      - REDROID_IMAGE=${REDROID_IMAGE:-redroid/redroid:14.0.0-latest}
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - mobiledroid_network
+    depends_on:
+      db:
+        condition: service_healthy
+      ws-scrcpy:
+        condition: service_started
+    restart: unless-stopped
+
+  # Web UI
+  ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ui
+      args:
+        # API URL for client-side requests (from user's browser)
+        NEXT_PUBLIC_API_URL: http://${DOCKER_HOST_IP:-localhost}:${API_PORT:-8100}
+    ports:
+      - "${UI_PORT:-3100}:3000"
+    networks:
+      - mobiledroid_network
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ws-scrcpy for web-based device viewing
+  ws-scrcpy:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm start"
+    ports:
+      - "${SCRCPY_PORT:-8186}:8886"
+    volumes:
+      - ws-scrcpy-data:/app
+    networks:
+      - mobiledroid_network
+    restart: unless-stopped
+
+networks:
+  mobiledroid_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ws-scrcpy-data:

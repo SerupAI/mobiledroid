@@ -1,0 +1,46 @@
+{
+  "proxies": [
+    {
+      "id": "smartproxy-residential",
+      "name": "SmartProxy Residential",
+      "type": "http",
+      "host": "gate.smartproxy.com",
+      "port": 7000,
+      "username": "your_username",
+      "password": "your_password",
+      "rotation": "sticky",
+      "sticky_session_duration": 10
+    },
+    {
+      "id": "brightdata-residential",
+      "name": "Bright Data Residential",
+      "type": "http",
+      "host": "brd.superproxy.io",
+      "port": 22225,
+      "username": "brd-customer-CUSTOMER-zone-ZONE",
+      "password": "your_password",
+      "rotation": "rotating"
+    },
+    {
+      "id": "oxylabs-datacenter",
+      "name": "Oxylabs Datacenter",
+      "type": "http",
+      "host": "pr.oxylabs.io",
+      "port": 7777,
+      "username": "customer-CUSTOMER",
+      "password": "your_password",
+      "rotation": "sticky"
+    },
+    {
+      "id": "local-socks5",
+      "name": "Local SOCKS5",
+      "type": "socks5",
+      "host": "127.0.0.1",
+      "port": 1080,
+      "username": null,
+      "password": null,
+      "rotation": null
+    }
+  ],
+  "default_proxy_id": null
+}

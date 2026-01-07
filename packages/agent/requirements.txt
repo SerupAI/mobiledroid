@@ -1,0 +1,26 @@
+# Core
+anthropic>=0.18.0
+openai>=1.10.0
+
+# ADB
+adbutils>=2.0.0
+
+# Image processing
+Pillow>=10.2.0
+
+# Async utilities
+asyncio>=3.4.3
+
+# HTTP client
+httpx>=0.26.0
+aiohttp>=3.9.1
+
+# Logging
+structlog>=24.1.0
+
+# XML parsing (for UI hierarchy)
+lxml>=5.1.0
+
+# Utilities
+pydantic>=2.5.3
+python-dotenv>=1.0.0

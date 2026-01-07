@@ -1,0 +1,27 @@
+# MobileDroid API Test Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY packages/api/requirements-test.txt .
+RUN pip install --no-cache-dir -r requirements-test.txt
+
+# Copy application and test code
+COPY packages/api/src ./src
+COPY packages/api/tests ./tests
+COPY packages/api/pytest.ini ./pytest.ini
+COPY config ./config
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Default command runs all tests
+CMD ["pytest", "tests/", "-v", "--tb=short"]

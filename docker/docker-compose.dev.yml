@@ -1,0 +1,30 @@
+version: '3.8'
+
+# Development overrides for docker-compose.yml
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ../packages/api/src:/app/src
+      - ../packages/agent/src:/app/agent_src
+      - ../config:/app/config
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DEBUG=true
+
+  ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ui
+    command: npm run dev
+    volumes:
+      - ../packages/ui:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000

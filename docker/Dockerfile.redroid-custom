@@ -1,0 +1,42 @@
+# Custom redroid image with fingerprint injection support
+# Based on redroid/redroid:14.0.0_64only-latest
+FROM redroid/redroid:14.0.0_64only-latest
+
+# Fingerprint environment variables (with defaults)
+ENV DEVICE_MODEL="Pixel 7"
+ENV DEVICE_BRAND="google"
+ENV DEVICE_MANUFACTURER="Google"
+ENV DEVICE_PRODUCT="panther"
+ENV BUILD_FINGERPRINT="google/panther/panther:14/UP1A.231005.007/10754064:user/release-keys"
+ENV ANDROID_ID=""
+ENV DEVICE_SERIAL=""
+ENV DEVICE_WIDTH="1080"
+ENV DEVICE_HEIGHT="2400"
+ENV DEVICE_DPI="420"
+ENV SDK_VERSION="34"
+ENV ANDROID_VERSION="14"
+ENV HARDWARE="panther"
+ENV BOARD="panther"
+
+# Additional spoofing options
+ENV SPOOF_WIFI_MAC=""
+ENV SPOOF_BLUETOOTH_MAC=""
+ENV TIMEZONE="America/New_York"
+ENV LOCALE="en_US"
+
+# Copy the fingerprint injection script
+COPY scripts/inject-fingerprint.sh /system/bin/inject-fingerprint.sh
+COPY scripts/init-fingerprint.rc /system/etc/init/init-fingerprint.rc
+
+# Make scripts executable (this runs in build context, actual chmod happens at runtime)
+# The entrypoint handles making scripts executable
+
+# Labels for identification
+LABEL org.opencontainers.image.source="https://github.com/serup.ai/mobiledroid"
+LABEL org.opencontainers.image.description="MobileDroid custom redroid with fingerprint injection"
+LABEL org.opencontainers.image.version="1.0.0"
+
+# Use custom entrypoint that applies fingerprints before Android init
+COPY scripts/entrypoint.sh /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

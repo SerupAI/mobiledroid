@@ -1,0 +1,51 @@
+[project]
+name = "mobiledroid-agent"
+version = "0.1.0"
+description = "MobileDroid AI Agent for Android automation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+authors = [
+    {name = "Serup.ai", email = "dev@serup.ai"}
+]
+
+dependencies = [
+    "anthropic>=0.18.0",
+    "openai>=1.10.0",
+    "adbutils>=2.0.0",
+    "Pillow>=10.2.0",
+    "httpx>=0.26.0",
+    "structlog>=24.1.0",
+    "lxml>=5.1.0",
+    "pydantic>=2.5.3",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.1.0",
+    "ruff>=0.1.14",
+    "mypy>=1.8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
