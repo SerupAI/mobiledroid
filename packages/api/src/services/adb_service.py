@@ -60,6 +60,16 @@ class ADBService:
         """Get a connected device."""
         return self._devices.get(address)
 
+    async def list_devices(self) -> list[str]:
+        """List connected ADB devices."""
+        try:
+            loop = asyncio.get_event_loop()
+            devices = await loop.run_in_executor(None, adb.device_list)
+            return [d.serial for d in devices]
+        except Exception as e:
+            logger.error("List devices error", error=str(e))
+            return []
+
     async def screenshot(self, address: str) -> bytes | None:
         """Take a screenshot of the device."""
         device = self._devices.get(address)

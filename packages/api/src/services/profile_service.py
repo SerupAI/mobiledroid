@@ -30,6 +30,10 @@ class ProfileService:
         self.docker = docker_service
         self.adb = adb_service
 
+    def _get_adb_address(self, profile: Profile) -> str:
+        """Get ADB address for a profile (container_name:5555)."""
+        return f"mobiledroid-{profile.id}:5555"
+
     async def create(self, data: ProfileCreate) -> Profile:
         """Create a new profile."""
         profile = Profile(
@@ -172,9 +176,10 @@ class ProfileService:
                 await self.db.flush()
                 return profile
 
-            # Connect via ADB
-            adb_address = f"localhost:{profile.adb_port}"
-            await self.adb.connect("localhost", profile.adb_port)
+            # Connect via ADB using container name on internal port
+            container_name = f"mobiledroid-{profile.id}"
+            adb_address = f"{container_name}:5555"
+            await self.adb.connect(container_name, 5555)
 
             profile.status = ProfileStatus.RUNNING
             profile.last_started_at = datetime.utcnow()
@@ -213,7 +218,7 @@ class ProfileService:
 
             # Disconnect ADB
             if profile.adb_port:
-                await self.adb.disconnect(f"localhost:{profile.adb_port}")
+                await self.adb.disconnect(self._get_adb_address(profile))
 
             # Stop container
             if profile.container_id:
@@ -246,7 +251,7 @@ class ProfileService:
         if not profile.adb_port:
             return None
 
-        return await self.adb.screenshot(f"localhost:{profile.adb_port}")
+        return await self.adb.screenshot(self._get_adb_address(profile))
 
     async def get_device_info(self, profile_id: str) -> dict[str, Any] | None:
         """Get device info from a running profile."""
@@ -257,7 +262,7 @@ class ProfileService:
         if not profile.adb_port:
             return None
 
-        return await self.adb.get_device_info(f"localhost:{profile.adb_port}")
+        return await self.adb.get_device_info(self._get_adb_address(profile))
 
     async def sync_status(self, profile_id: str) -> Profile | None:
         """Sync profile status with actual container status."""
@@ -329,7 +334,7 @@ class ProfileService:
         if profile.adb_port:
             try:
                 devices = await self.adb.list_devices()
-                adb_addr = f"localhost:{profile.adb_port}"
+                adb_addr = self._get_adb_address(profile)
                 result["adb_connected"] = any(adb_addr in d for d in devices)
             except Exception as e:
                 logger.debug("ADB check failed", error=str(e))
@@ -341,7 +346,7 @@ class ProfileService:
 
         # Try to get a screenshot to verify screen is ready
         try:
-            screenshot = await self.adb.screenshot(f"localhost:{profile.adb_port}")
+            screenshot = await self.adb.screenshot(self._get_adb_address(profile))
             result["screen_available"] = screenshot is not None and len(screenshot) > 0
         except Exception as e:
             logger.debug("Screenshot check failed", error=str(e))

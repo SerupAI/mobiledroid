@@ -76,6 +76,7 @@ services:
 
 networks:
   mobiledroid_network:
+    name: mobiledroid_network
     driver: bridge
 
 volumes:

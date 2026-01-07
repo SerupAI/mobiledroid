@@ -84,7 +84,7 @@ async def get_profile_adb_address(
     profile_id: str,
     service: ProfileService,
 ) -> str:
-    """Get ADB address for a profile."""
+    """Get ADB address for a profile (container_name:5555)."""
     profile = await service.get(profile_id)
     if not profile:
         raise HTTPException(
@@ -101,7 +101,8 @@ async def get_profile_adb_address(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Profile has no ADB port",
         )
-    return f"localhost:{profile.adb_port}"
+    # Use container name for Docker networking
+    return f"mobiledroid-{profile_id}:5555"
 
 
 @router.post("/{profile_id}/tap", response_model=ActionResponse)
@@ -113,7 +114,8 @@ async def tap(
 ) -> ActionResponse:
     """Tap at coordinates on device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.tap(address, action.x, action.y)
     return ActionResponse(
         success=success,
@@ -130,7 +132,8 @@ async def swipe(
 ) -> ActionResponse:
     """Swipe gesture on device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.swipe(
         address,
         action.x1,
@@ -154,7 +157,8 @@ async def input_text(
 ) -> ActionResponse:
     """Input text on device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.input_text(address, action.text)
     return ActionResponse(
         success=success,
@@ -171,7 +175,8 @@ async def press_key(
 ) -> ActionResponse:
     """Press a key on device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.press_key(address, action.keycode)
     return ActionResponse(
         success=success,
@@ -187,7 +192,8 @@ async def press_back(
 ) -> ActionResponse:
     """Press back button."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.press_back(address)
     return ActionResponse(
         success=success,
@@ -203,7 +209,8 @@ async def press_home(
 ) -> ActionResponse:
     """Press home button."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.press_home(address)
     return ActionResponse(
         success=success,
@@ -220,7 +227,8 @@ async def shell_command(
 ) -> ActionResponse:
     """Execute shell command on device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     result = await adb.shell(address, action.command)
     return ActionResponse(
         success=result is not None,
@@ -238,7 +246,8 @@ async def launch_app(
 ) -> ActionResponse:
     """Launch an app on device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     success = await adb.launch_app(address, action.package)
     return ActionResponse(
         success=success,
@@ -254,7 +263,8 @@ async def get_ui_hierarchy(
 ) -> ActionResponse:
     """Get UI hierarchy XML from device."""
     address = await get_profile_adb_address(profile_id, service)
-    await adb.connect("localhost", int(address.split(":")[1]))
+    host, port = address.rsplit(":", 1)
+    await adb.connect(host, int(port))
     hierarchy = await adb.get_ui_hierarchy(address)
     return ActionResponse(
         success=hierarchy is not None,
