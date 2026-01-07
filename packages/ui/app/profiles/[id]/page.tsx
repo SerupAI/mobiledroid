@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { DeviceViewerWS } from '@/components/DeviceViewerWS';
 import { DeviceControls } from '@/components/DeviceControls';
-import { TaskInput } from '@/components/TaskInput';
+import { DeviceChat } from '@/components/DeviceChat';
 import { api } from '@/lib/api';
 import { cn, getStatusColor } from '@/lib/utils';
 
@@ -143,12 +143,9 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* AI Task panel */}
+            {/* AI Chat panel */}
             <div className="space-y-6">
-              <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-                <h2 className="font-semibold mb-4">AI Task</h2>
-                <TaskInput profileId={profileId} />
-              </div>
+              <DeviceChat profileId={profileId} />
 
               {/* Task history */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
