@@ -53,6 +53,7 @@ services:
       dockerfile: docker/Dockerfile.ui
       args:
         # API URL for client-side requests (from user's browser)
+        # DOCKER_HOST_IP must be set to the public IP when deploying
         NEXT_PUBLIC_API_URL: http://${DOCKER_HOST_IP:-localhost}:${API_PORT:-8100}
         NEXT_PUBLIC_DEBUG: ${DEBUG:-false}
     ports:

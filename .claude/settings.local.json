@@ -32,7 +32,8 @@
       "Bash(git add:*)",
       "Bash(git branch:*)",
       "Bash(git commit:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(./scripts/deploy-to-ec2.sh:*)"
     ]
   }
 }
