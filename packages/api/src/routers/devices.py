@@ -114,8 +114,7 @@ async def tap(
 ) -> ActionResponse:
     """Tap at coordinates on device."""
     address = await get_profile_adb_address(profile_id, service)
-    host, port = address.rsplit(":", 1)
-    await adb.connect(host, int(port))
+    # Don't reconnect if already connected - ADB service handles caching
     success = await adb.tap(address, action.x, action.y)
     return ActionResponse(
         success=success,
@@ -132,8 +131,7 @@ async def swipe(
 ) -> ActionResponse:
     """Swipe gesture on device."""
     address = await get_profile_adb_address(profile_id, service)
-    host, port = address.rsplit(":", 1)
-    await adb.connect(host, int(port))
+    # Don't reconnect if already connected - ADB service handles caching
     success = await adb.swipe(
         address,
         action.x1,
@@ -157,8 +155,7 @@ async def input_text(
 ) -> ActionResponse:
     """Input text on device."""
     address = await get_profile_adb_address(profile_id, service)
-    host, port = address.rsplit(":", 1)
-    await adb.connect(host, int(port))
+    # Don't reconnect if already connected - ADB service handles caching
     success = await adb.input_text(address, action.text)
     return ActionResponse(
         success=success,

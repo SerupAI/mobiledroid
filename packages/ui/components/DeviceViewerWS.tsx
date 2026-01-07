@@ -17,8 +17,10 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [currentFrame, setCurrentFrame] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tapIndicators, setTapIndicators] = useState<Array<{id: number, x: number, y: number}>>([]);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const reconnectAttemptsRef = useRef(0);
+  const tapIdRef = useRef(0);
 
   // Poll device readiness
   const { data: readiness } = useQuery({
@@ -28,6 +30,23 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   });
 
   const isReady = readiness?.ready ?? false;
+
+  // Show tap feedback
+  const showTapFeedback = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const id = tapIdRef.current++;
+
+    setTapIndicators(prev => [...prev, { id, x, y }]);
+
+    // Remove after animation
+    setTimeout(() => {
+      setTapIndicators(prev => prev.filter(tap => tap.id !== id));
+    }, 600);
+  };
 
   // WebSocket connection
   useEffect(() => {
@@ -59,6 +78,11 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
           if (data.type === 'frame' && data.data) {
             // Convert base64 to data URL
             setCurrentFrame(`data:image/png;base64,${data.data}`);
+          } else if (data.type === 'command_result') {
+            // Handle command results
+            if (!data.success) {
+              console.error('Command failed:', data.command);
+            }
           } else if (data.error) {
             setError(data.error);
           }
@@ -101,7 +125,7 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   }, [isReady, profileId]);
 
   const handleClick = (e: React.MouseEvent<HTMLImageElement>) => {
-    if (!imgRef.current || !onTap || !isReady) return;
+    if (!imgRef.current || !isReady || !isConnected) return;
 
     const rect = imgRef.current.getBoundingClientRect();
     const scaleX = imgRef.current.naturalWidth / rect.width;
@@ -110,7 +134,20 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
     const x = Math.round((e.clientX - rect.left) * scaleX);
     const y = Math.round((e.clientY - rect.top) * scaleY);
 
-    onTap(x, y);
+    // Send tap command through WebSocket for lower latency
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        command: 'tap',
+        x,
+        y
+      }));
+      
+      // Visual feedback - show tap indicator
+      showTapFeedback(e.clientX, e.clientY);
+    } else if (onTap) {
+      // Fallback to HTTP API
+      onTap(x, y);
+    }
   };
 
   // Connection status indicators component
@@ -228,6 +265,21 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
             draggable={false}
           />
         )}
+        
+        {/* Tap indicators */}
+        {tapIndicators.map(tap => (
+          <div
+            key={tap.id}
+            className="absolute pointer-events-none"
+            style={{
+              left: tap.x,
+              top: tap.y,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            <div className="tap-indicator" />
+          </div>
+        ))}
       </div>
     </div>
   );

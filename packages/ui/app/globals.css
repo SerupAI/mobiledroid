@@ -41,3 +41,26 @@ body {
 .aspect-phone {
   aspect-ratio: 9 / 16;
 }
+
+/* Tap indicator animation */
+@keyframes tap-ripple {
+  0% {
+    width: 0;
+    height: 0;
+    opacity: 0.5;
+  }
+  100% {
+    width: 40px;
+    height: 40px;
+    opacity: 0;
+  }
+}
+
+.tap-indicator {
+  position: absolute;
+  border-radius: 50%;
+  background-color: rgba(59, 130, 246, 0.5);
+  border: 2px solid rgba(59, 130, 246, 0.8);
+  animation: tap-ripple 0.6s ease-out;
+  pointer-events: none;
+}

@@ -36,7 +36,7 @@ async def stream_device_screen(
     profile_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Stream device screen via WebSocket."""
+    """Stream device screen via WebSocket with bidirectional command support."""
     await websocket.accept()
     
     # Get profile service
@@ -44,6 +44,10 @@ async def stream_device_screen(
     docker_service = DockerService(fingerprint_service)
     adb_service = ADBService()
     profile_service = ProfileService(db, docker_service, adb_service)
+    
+    # Create tasks for concurrent handling
+    send_task = None
+    receive_task = None
     
     try:
         # Verify profile exists and is running
@@ -63,44 +67,121 @@ async def stream_device_screen(
         
         logger.info("WebSocket stream started", profile_id=profile_id)
         
-        # Stream screenshots
-        frame_interval = 0.067  # ~15 fps
-        error_count = 0
-        max_errors = 5
-        
-        while True:
-            try:
-                # Take screenshot
-                screenshot = await adb_service.screenshot(adb_address)
-                
-                if screenshot:
-                    # Send as base64 to avoid binary WebSocket complexity
-                    base64_data = base64.b64encode(screenshot).decode('utf-8')
-                    await websocket.send_json({
-                        "type": "frame",
-                        "data": base64_data,
-                        "timestamp": asyncio.get_event_loop().time()
-                    })
-                    error_count = 0
-                else:
+        # Create send and receive tasks for concurrent operation
+        async def send_frames():
+            """Send screenshot frames to client."""
+            frame_interval = 0.033  # ~30 fps for better responsiveness
+            error_count = 0
+            max_errors = 5
+            
+            while True:
+                try:
+                    # Take screenshot
+                    screenshot = await adb_service.screenshot(adb_address)
+                    
+                    if screenshot:
+                        # Send as base64 to avoid binary WebSocket complexity
+                        base64_data = base64.b64encode(screenshot).decode('utf-8')
+                        await websocket.send_json({
+                            "type": "frame",
+                            "data": base64_data,
+                            "timestamp": asyncio.get_event_loop().time()
+                        })
+                        error_count = 0
+                    else:
+                        error_count += 1
+                        if error_count > max_errors:
+                            await websocket.send_json({"error": "Screenshot failed"})
+                            break
+                    
+                    # Wait for next frame
+                    await asyncio.sleep(frame_interval)
+                    
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error("Send frame error", error=str(e))
                     error_count += 1
                     if error_count > max_errors:
-                        await websocket.send_json({"error": "Screenshot failed"})
                         break
-                
-                # Wait for next frame
-                await asyncio.sleep(frame_interval)
-                
-            except WebSocketDisconnect:
-                logger.info("WebSocket disconnected", profile_id=profile_id)
-                break
-            except Exception as e:
-                logger.error("Stream error", error=str(e), profile_id=profile_id)
-                error_count += 1
-                if error_count > max_errors:
-                    await websocket.send_json({"error": "Stream error"})
+                    await asyncio.sleep(frame_interval)
+        
+        async def receive_commands():
+            """Receive and process commands from client."""
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    command = data.get("command")
+                    
+                    if command == "tap":
+                        x = data.get("x")
+                        y = data.get("y")
+                        if x is not None and y is not None:
+                            success = await adb_service.tap(adb_address, x, y)
+                            await websocket.send_json({
+                                "type": "command_result",
+                                "command": "tap",
+                                "success": success
+                            })
+                    
+                    elif command == "swipe":
+                        x1, y1 = data.get("x1"), data.get("y1")
+                        x2, y2 = data.get("x2"), data.get("y2")
+                        duration = data.get("duration", 300)
+                        if all(v is not None for v in [x1, y1, x2, y2]):
+                            success = await adb_service.swipe(adb_address, x1, y1, x2, y2, duration)
+                            await websocket.send_json({
+                                "type": "command_result",
+                                "command": "swipe",
+                                "success": success
+                            })
+                    
+                    elif command == "key":
+                        keycode = data.get("keycode")
+                        if keycode:
+                            success = await adb_service.press_key(adb_address, keycode)
+                            await websocket.send_json({
+                                "type": "command_result",
+                                "command": "key",
+                                "success": success
+                            })
+                    
+                    elif command == "text":
+                        text = data.get("text")
+                        if text:
+                            success = await adb_service.input_text(adb_address, text)
+                            await websocket.send_json({
+                                "type": "command_result",
+                                "command": "text",
+                                "success": success
+                            })
+                            
+                except asyncio.CancelledError:
                     break
-                await asyncio.sleep(frame_interval)
+                except WebSocketDisconnect:
+                    logger.info("WebSocket disconnected during receive")
+                    break
+                except Exception as e:
+                    logger.error("Receive command error", error=str(e))
+                    # Continue receiving commands even if one fails
+        
+        # Run send and receive concurrently
+        send_task = asyncio.create_task(send_frames())
+        receive_task = asyncio.create_task(receive_commands())
+        
+        # Wait for either task to complete
+        done, pending = await asyncio.wait(
+            [send_task, receive_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # Cancel remaining tasks
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
                 
     except Exception as e:
         logger.error("WebSocket error", error=str(e))
