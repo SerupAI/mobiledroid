@@ -18,9 +18,12 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   const [currentFrame, setCurrentFrame] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tapIndicators, setTapIndicators] = useState<Array<{id: number, x: number, y: number}>>([]);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const reconnectAttemptsRef = useRef(0);
   const tapIdRef = useRef(0);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Poll device readiness
   const { data: readiness } = useQuery({
@@ -118,6 +121,9 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -148,6 +154,58 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
       // Fallback to HTTP API
       onTap(x, y);
     }
+  };
+
+  // Handle keyboard input
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isReady || !isConnected || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Show typing indicator
+    setIsTyping(true);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 500);
+
+    // Handle special keys
+    const specialKeys: { [key: string]: string } = {
+      'Enter': 'KEYCODE_ENTER',
+      'Backspace': 'KEYCODE_DEL',
+      'Delete': 'KEYCODE_FORWARD_DEL',
+      'Tab': 'KEYCODE_TAB',
+      'Escape': 'KEYCODE_ESCAPE',
+      'ArrowUp': 'KEYCODE_DPAD_UP',
+      'ArrowDown': 'KEYCODE_DPAD_DOWN',
+      'ArrowLeft': 'KEYCODE_DPAD_LEFT',
+      'ArrowRight': 'KEYCODE_DPAD_RIGHT',
+      'Home': 'KEYCODE_MOVE_HOME',
+      'End': 'KEYCODE_MOVE_END',
+      'PageUp': 'KEYCODE_PAGE_UP',
+      'PageDown': 'KEYCODE_PAGE_DOWN',
+      ' ': 'KEYCODE_SPACE',
+    };
+
+    if (e.key in specialKeys) {
+      e.preventDefault();
+      wsRef.current.send(JSON.stringify({
+        command: 'key',
+        keycode: specialKeys[e.key]
+      }));
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Regular character input
+      e.preventDefault();
+      wsRef.current.send(JSON.stringify({
+        command: 'text',
+        text: e.key
+      }));
+    }
+  };
+
+  // Focus handlers
+  const handleFocus = () => setIsFocused(true);
+  const handleBlur = () => {
+    setIsFocused(false);
+    setIsTyping(false);
   };
 
   // Connection status indicators component
@@ -229,9 +287,30 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   };
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div 
+      className={`relative outline-none ${isFocused ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-gray-900 rounded-lg' : ''}`} 
+      ref={containerRef}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+    >
       {/* Connection status indicators - always visible */}
       <ConnectionStatus />
+
+      {/* Typing indicator */}
+      {isTyping && (
+        <div className="absolute top-2 right-2 z-20 bg-primary-500/20 rounded px-2 py-1 text-xs text-primary-400">
+          Typing...
+        </div>
+      )}
+
+      {/* Focus hint */}
+      {!isFocused && isReady && isConnected && (
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 bg-gray-800/90 rounded px-2 py-1 text-xs text-gray-400">
+          Click to focus and type
+        </div>
+      )}
 
       {/* Device screen container */}
       <div className="aspect-phone bg-black rounded-lg overflow-hidden relative">
