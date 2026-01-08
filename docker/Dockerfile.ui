@@ -28,9 +28,8 @@ ENV NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG}
 
 # Git commit SHA for build info
 ARG GIT_COMMIT_SHA=unknown
-ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
-RUN npm run build
+RUN GIT_COMMIT_SHA=${GIT_COMMIT_SHA} npm run build
 
 # Production stage
 FROM base AS runner

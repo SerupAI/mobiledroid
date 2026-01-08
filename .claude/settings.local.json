@@ -34,7 +34,9 @@
       "Bash(git commit:*)",
       "Bash(python3:*)",
       "Bash(./scripts/deploy-to-ec2.sh:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git push:*)",
+      "Bash(git rev-parse:*)"
     ]
   }
 }
