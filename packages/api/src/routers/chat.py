@@ -14,6 +14,8 @@ from src.services.profile_service import ProfileService
 from src.services.docker_service import DockerService
 from src.services.adb_service import ADBService
 from src.services.fingerprint_service import get_fingerprint_service
+from src.services.integration_service import IntegrationService, get_integration_service
+from src.models.integration import IntegrationPurpose
 from src.config import settings
 
 # Import agent from the wrapper module
@@ -53,6 +55,7 @@ async def chat_with_device(
     profile_id: str,
     chat_message: ChatMessage,
     service: Annotated[ProfileService, Depends(get_profile_service)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ChatResponse:
     """Send a natural language command to control the device.
     
@@ -71,11 +74,14 @@ async def chat_with_device(
     if profile.status != ProfileStatus.RUNNING:
         raise HTTPException(status_code=400, detail="Profile not running")
     
-    # Check API key
-    if not settings.anthropic_api_key:
+    # Get integration configuration for chat
+    integration_service = IntegrationService(db)
+    chat_config = await integration_service.get_chat_config()
+    
+    if not chat_config:
         raise HTTPException(
             status_code=500,
-            detail="Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable."
+            detail="No chat integration configured. Please set up LLM provider configuration."
         )
     
     # Get ADB address
@@ -87,11 +93,11 @@ async def chat_with_device(
         agent = await MobileDroidAgent.connect(
             host=host,
             port=int(port),
-            anthropic_api_key=settings.anthropic_api_key,
+            anthropic_api_key=chat_config.api_key,
             config=AgentConfig(
                 max_steps=chat_message.max_steps,
-                llm_model="claude-3-5-sonnet-20241022",  # Use cheaper, faster model
-                temperature=0.0,
+                llm_model=chat_config.model_name,
+                temperature=chat_config.temperature,
             ),
         )
         

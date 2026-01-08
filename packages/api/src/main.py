@@ -16,7 +16,8 @@ from src.routers import (
     fingerprints_router,
     stream_router,
     snapshots_router,
-    # chat_router,  # TODO: Fix agent import path
+    chat_router,
+    debug_router,
 )
 
 # Configure structured logging
@@ -50,6 +51,19 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     logger.info("Database initialized")
+    
+    # Seed initial data
+    try:
+        from src.db.session import AsyncSessionLocal
+        from src.services.seed_service import SeedService
+        
+        async with AsyncSessionLocal() as db:
+            seed_service = SeedService(db)
+            await seed_service.seed_initial_data()
+        
+        logger.info("Initial data seeded")
+    except Exception as e:
+        logger.warning("Failed to seed initial data", error=str(e))
 
     yield
 
@@ -102,7 +116,8 @@ app.include_router(tasks_router)
 app.include_router(fingerprints_router)
 app.include_router(stream_router)
 app.include_router(snapshots_router)
-# app.include_router(chat_router)  # TODO: Fix agent import path
+app.include_router(chat_router)
+app.include_router(debug_router)
 
 
 # Health check endpoint

@@ -40,6 +40,9 @@ asyncio>=3.4.3
 # Logging and monitoring
 structlog>=24.1.0
 
+# XML parsing (for agent UI hierarchy)
+lxml>=5.1.0
+
 # Security
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4

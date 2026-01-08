@@ -8,7 +8,8 @@ AI-powered Android automation platform using Redroid containers for browser fing
 ditto-mobile/
 ├── packages/
 │   ├── api/          # FastAPI backend (Python 3.11)
-│   ├── ui/           # Next.js 14 frontend (React, TypeScript)
+│   └── ui/           # Next.js 14 frontend (React, TypeScript)
+├── lib/
 │   └── agent/        # AI agent for automation (Python)
 ├── docker/           # Docker Compose and Dockerfiles
 ├── infra/aws/        # Terraform for EC2 deployment
@@ -20,6 +21,7 @@ ditto-mobile/
 
 - **API**: FastAPI with PostgreSQL, manages profiles and orchestrates Docker containers
 - **UI**: Next.js with TanStack Query, provides device management interface
+- **AI Agent**: Claude 4.5 Sonnet for natural language Android device control
 - **Containers**: Redroid (Android in Docker) instances per profile
 - **ADB**: Connects to containers via internal Docker network (`mobiledroid-{profile_id}:5555`)
 - **ws-scrcpy**: Web-based screen mirroring (future real-time view)
@@ -83,6 +85,8 @@ python -m pytest tests/ -v --cov=src
 | `/profiles/{id}/stop` | POST | Stop profile |
 | `/profiles/{id}/ready` | GET | Check boot progress (poll this after start) |
 | `/profiles/{id}/screenshot` | GET | Get device screenshot |
+| `/chat/profiles/{id}` | POST | Send AI command to control device |
+| `/chat/examples` | GET | Get example chat commands |
 | `/fingerprints/random` | GET | Generate random device fingerprint |
 
 ## Profile Lifecycle
@@ -110,6 +114,113 @@ networks:
     name: mobiledroid_network
     driver: bridge
 ```
+
+## AI Agent (Natural Language Device Control)
+
+The MobileDroid AI Agent provides intelligent Android device automation through natural language commands using Claude 4.5 Sonnet.
+
+### Quick Start
+
+```bash
+# Send a command to control the device
+curl -X POST http://34.235.77.142:8100/chat/profiles/{profile_id} \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Open the settings app and turn on airplane mode", "max_steps": 10}'
+```
+
+### How It Works
+
+```
+User Command → Chat API → Integration Service → AI Agent → Device Control
+                                    ↓              ↓
+                            Claude 4.5 AI ← Screenshot + UI Analysis
+```
+
+### Example Commands
+
+**Simple Actions:**
+- `"What do you see on the screen?"`
+- `"Take a screenshot"`
+- `"Click the back button"`
+- `"Type 'hello world' in the text field"`
+
+**Navigation:**
+- `"Go to the home screen"`
+- `"Open the settings app"`
+- `"Swipe up to see all apps"`
+
+**Complex Tasks:**
+- `"Turn on airplane mode"`
+- `"Set an alarm for 7 AM"`
+- `"Send a message to John saying 'Hello'"`
+- `"Install WhatsApp from the Play Store"`
+
+### Chat API
+
+**Request:**
+```json
+POST /chat/profiles/{profile_id}
+{
+  "message": "Your natural language command",
+  "max_steps": 20
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "response": "I successfully turned on airplane mode by going to Settings > Network & Internet > Airplane mode and enabling the toggle.",
+  "steps_taken": 5,
+  "error": null
+}
+```
+
+### Agent Architecture
+
+**Components:**
+- **Vision Service**: Screenshots + UI hierarchy analysis
+- **Claude 4.5 AI**: Task understanding and action planning  
+- **Action Executor**: Device control via ADB (tap, type, swipe, etc.)
+- **Integration Service**: Database-driven LLM configuration
+
+**Execution Flow:**
+1. Capture device screenshot
+2. Extract UI elements and coordinates
+3. Send visual + text context to Claude AI
+4. Parse AI response into device actions
+5. Execute actions on Android device
+6. Repeat until task complete
+
+### Agent Configuration
+
+The agent uses database-driven LLM configuration:
+- **Provider**: Anthropic (Claude)
+- **Model**: claude-sonnet-4-5-20250929
+- **Max Steps**: Configurable per request (default: 20)
+- **Temperature**: 0.0 (deterministic responses)
+
+### Performance
+
+**Timing Expectations:**
+- Simple tasks (1-2 steps): 10-30 seconds
+- Medium tasks (3-5 steps): 30-90 seconds
+- Complex tasks (5+ steps): 2-5 minutes
+
+**Capabilities:**
+- Screenshot analysis and UI understanding
+- Multi-step task automation
+- Error recovery and retry logic
+- Context-aware decision making
+
+### Limitations
+
+- No memory between separate chat sessions
+- Single device control per request
+- Limited to visible UI elements
+- Text input requires on-screen keyboard
+
+For detailed agent documentation, see [`lib/agent/README.md`](lib/agent/README.md).
 
 ## Environment Variables
 
@@ -175,10 +286,23 @@ When `DEBUG=true` and `NEXT_PUBLIC_DEBUG=true` are set:
 
 ## File Locations
 
+### Core Services
 - **Profile Service**: `packages/api/src/services/profile_service.py`
 - **Docker Service**: `packages/api/src/services/docker_service.py`
 - **ADB Service**: `packages/api/src/services/adb_service.py`
+- **Integration Service**: `packages/api/src/services/integration_service.py`
+
+### API Routers  
 - **Profile Router**: `packages/api/src/routers/profiles.py`
+- **Chat Router**: `packages/api/src/routers/chat.py`
+
+### AI Agent
+- **Main Agent**: `lib/agent/src/agent.py`
+- **Vision Service**: `lib/agent/src/vision.py`
+- **Action Executor**: `lib/agent/src/actions.py`
+- **Agent Wrapper**: `packages/api/src/agent_wrapper.py`
+
+### Frontend
 - **Device Viewer**: `packages/ui/components/DeviceViewer.tsx`
 - **Profile Card**: `packages/ui/components/ProfileCard.tsx`
 - **API Client**: `packages/ui/lib/api.ts`

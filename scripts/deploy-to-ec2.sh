@@ -29,7 +29,7 @@ rsync -avz \
 
 # Build and restart containers on EC2
 echo "Building and restarting containers..."
-ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid/docker && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA docker compose up -d --build"
+ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && set -a && source .env && set +a && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA docker compose -f docker/docker-compose.yml up -d --build"
 
 echo "Deployment complete!"
 echo "UI: http://$EC2_HOST:3100"

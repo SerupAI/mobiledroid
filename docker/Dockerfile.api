@@ -20,17 +20,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY packages/api/src ./src
-# Copy agent code and rename src to match imports
-COPY packages/agent/src ./agent_src/src
-# Create __init__.py to make agent_src a package
-RUN touch /app/agent_src/__init__.py
+
+# Copy agent library
+COPY lib/agent /app/lib/agent
+
+# Copy config
 COPY config ./config
 
 # Create data directory
 RUN mkdir -p /app/data
 
 # Environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/lib/agent/src
 ENV PYTHONUNBUFFERED=1
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
