@@ -9,11 +9,13 @@
 #   --build      Force rebuild containers (default)
 #   --no-build   Skip building, just restart existing containers  
 #   --no-cache   Force rebuild without Docker cache
+#   --test       Run local tests before deploying
 #   --help       Show this help
 
 # Parse arguments
 TAG=""
 BUILD_MODE="build"      # build, no-build, no-cache
+RUN_TESTS=false
 HELP=false
 
 for arg in "$@"; do
@@ -26,6 +28,9 @@ for arg in "$@"; do
             ;;
         --no-cache)
             BUILD_MODE="no-cache"
+            ;;
+        --test)
+            RUN_TESTS=true
             ;;
         --help)
             HELP=true
@@ -57,6 +62,7 @@ if [[ "$HELP" == true ]]; then
     echo "  --build      Force rebuild containers (default)"
     echo "  --no-build   Skip building, just restart existing containers"
     echo "  --no-cache   Force rebuild without Docker cache (slow but ensures fresh build)"
+    echo "  --test       Run local tests before deploying (uses 192.168.1.26 Docker host)"
     echo "  --help       Show this help"
     echo ""
     echo "Examples:"
@@ -64,6 +70,7 @@ if [[ "$HELP" == true ]]; then
     echo "  $0 v0.0.1                    # Deploy tag v0.0.1 with rebuild"
     echo "  $0 --no-build               # Restart containers without rebuilding"
     echo "  $0 v0.0.1 --no-cache        # Deploy tag with fresh rebuild (no cache)"
+    echo "  $0 --test                    # Test locally then deploy"
     echo ""
     exit 0
 fi
@@ -82,6 +89,13 @@ fi
 
 # Export for docker-compose
 export GIT_COMMIT_SHA
+
+# Run local tests if requested
+if [ "$RUN_TESTS" = true ]; then
+    echo "Running local tests first..."
+    ./scripts/test-local.sh
+    echo ""
+fi
 
 # EC2 details
 EC2_HOST="34.235.77.142"
