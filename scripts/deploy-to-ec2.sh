@@ -1,11 +1,72 @@
 #!/bin/bash
 
 # Deploy script for EC2
-# Usage: ./deploy-to-ec2.sh [tag]
+# Usage: ./deploy-to-ec2.sh [tag] [options]
 #   tag: Optional git tag to deploy (e.g., v0.0.1)
 #        If not provided, deploys current local code
+#
+# Options:
+#   --build      Force rebuild containers (default)
+#   --no-build   Skip building, just restart existing containers  
+#   --no-cache   Force rebuild without Docker cache
+#   --help       Show this help
 
-TAG=$1
+# Parse arguments
+TAG=""
+BUILD_MODE="build"      # build, no-build, no-cache
+HELP=false
+
+for arg in "$@"; do
+    case $arg in
+        --build)
+            BUILD_MODE="build"
+            ;;
+        --no-build)
+            BUILD_MODE="no-build"
+            ;;
+        --no-cache)
+            BUILD_MODE="no-cache"
+            ;;
+        --help)
+            HELP=true
+            ;;
+        --*)
+            echo "Unknown option: $arg"
+            exit 1
+            ;;
+        *)
+            if [[ -z "$TAG" ]]; then
+                TAG="$arg"
+            else
+                echo "Multiple tags specified: $TAG and $arg"
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+if [[ "$HELP" == true ]]; then
+    echo "Deploy script for EC2"
+    echo ""
+    echo "Usage: $0 [tag] [options]"
+    echo ""
+    echo "Arguments:"
+    echo "  tag          Git tag to deploy (e.g., v0.0.1). If not provided, deploys current local code"
+    echo ""
+    echo "Options:"
+    echo "  --build      Force rebuild containers (default)"
+    echo "  --no-build   Skip building, just restart existing containers"
+    echo "  --no-cache   Force rebuild without Docker cache (slow but ensures fresh build)"
+    echo "  --help       Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  $0                           # Deploy local code with rebuild"
+    echo "  $0 v0.0.1                    # Deploy tag v0.0.1 with rebuild"
+    echo "  $0 --no-build               # Restart containers without rebuilding"
+    echo "  $0 v0.0.1 --no-cache        # Deploy tag with fresh rebuild (no cache)"
+    echo ""
+    exit 0
+fi
 
 if [ -n "$TAG" ]; then
     echo "Deploying tag: $TAG"
@@ -78,14 +139,26 @@ else
 fi
 
 # Build and restart containers on EC2
-echo "Building and restarting containers..."
-ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && set -a && source .env 2>/dev/null || true && set +a && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA DEBUG=true docker compose -f docker/docker-compose.yml up -d --build"
+case $BUILD_MODE in
+    "no-build")
+        echo "Restarting containers without building..."
+        ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && set -a && source .env 2>/dev/null || true && set +a && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA DEBUG=true docker compose -f docker/docker-compose.yml up -d"
+        ;;
+    "no-cache")
+        echo "Building and restarting containers (no cache)..."
+        ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && set -a && source .env 2>/dev/null || true && set +a && docker compose -f docker/docker-compose.yml down && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA DEBUG=true docker compose -f docker/docker-compose.yml build --no-cache && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA DEBUG=true docker compose -f docker/docker-compose.yml up -d"
+        ;;
+    "build"|*)
+        echo "Building and restarting containers..."
+        ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && set -a && source .env 2>/dev/null || true && set +a && DOCKER_HOST_IP=$EC2_HOST GIT_COMMIT_SHA=$GIT_COMMIT_SHA DEBUG=true docker compose -f docker/docker-compose.yml up -d --build"
+        ;;
+esac
 
 echo "Deployment complete!"
 if [ "$DEPLOY_MODE" = "tag" ]; then
-    echo "Deployed tag: $TAG (commit: $GIT_COMMIT_SHA)"
+    echo "Deployed tag: $TAG (commit: $GIT_COMMIT_SHA) [build-mode: $BUILD_MODE]"
 else
-    echo "Deployed local code (commit: $GIT_COMMIT_SHA)"
+    echo "Deployed local code (commit: $GIT_COMMIT_SHA) [build-mode: $BUILD_MODE]"
 fi
 echo ""
 echo "UI: http://$EC2_HOST:3100"
