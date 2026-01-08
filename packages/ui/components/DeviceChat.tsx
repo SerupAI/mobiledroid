@@ -22,6 +22,9 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [editingMessage, setEditingMessage] = useState<string | null>(null);
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
+  const [chatHeight, setChatHeight] = useState(256); // 16rem = 256px
+  const [maxSteps, setMaxSteps] = useState(20);
+  const [wasStoppedByUser, setWasStoppedByUser] = useState(false);
 
   const stopChat = async () => {
     try {
@@ -37,9 +40,11 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
       }
       
       // Stop will be handled by the streaming response
+      setWasStoppedByUser(true);
       setIsStreaming(false);
     } catch (error) {
       console.error('Failed to stop chat:', error);
+      setWasStoppedByUser(true);
       setIsStreaming(false);
     }
   };
@@ -49,10 +54,12 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
     setMessage('');
     setEditingMessage(null);
     setLastUserMessage('');
+    setWasStoppedByUser(false);
   };
 
   const repeatLastMessage = async () => {
     if (lastUserMessage && !isStreaming) {
+      setWasStoppedByUser(false);
       await sendMessageWithStream(lastUserMessage);
     }
   };
@@ -61,6 +68,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
     if (lastUserMessage && !isStreaming) {
       setMessage(lastUserMessage);
       setEditingMessage(lastUserMessage);
+      setWasStoppedByUser(false);
     }
   };
 
@@ -73,7 +81,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, max_steps: maxSteps }),
       });
       
       if (!response.ok) {
@@ -222,17 +230,55 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
           </button>
           <button
             onClick={editLastMessage}
-            disabled={!lastUserMessage || isStreaming}
-            className="p-1 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Edit last message"
+            disabled={!lastUserMessage || (isStreaming && !wasStoppedByUser)}
+            className={`p-1 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed ${
+              wasStoppedByUser ? 'text-orange-400 hover:text-orange-300' : ''
+            }`}
+            title={wasStoppedByUser ? "Edit stopped message" : "Edit last message"}
           >
             <Edit3 className="h-4 w-4" />
           </button>
         </div>
       </div>
 
+      {/* Debug Controls */}
+      {process.env.NEXT_PUBLIC_DEBUG === 'true' && (
+        <div className="px-4 py-2 border-b border-gray-800 bg-gray-950">
+          <div className="flex items-center gap-4 text-sm">
+            <label className="flex items-center gap-2 text-gray-400">
+              Max Steps:
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={maxSteps}
+                onChange={(e) => setMaxSteps(parseInt(e.target.value) || 20)}
+                className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white"
+                disabled={isStreaming}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-gray-400">
+              Chat Height:
+              <input
+                type="range"
+                min="200"
+                max="600"
+                value={chatHeight}
+                onChange={(e) => setChatHeight(parseInt(e.target.value))}
+                className="w-20"
+                disabled={isStreaming}
+              />
+              <span className="text-xs">{chatHeight}px</span>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Chat History */}
-      <div className="h-64 overflow-y-auto p-4 space-y-3">
+      <div 
+        className="overflow-y-auto p-4 space-y-3"
+        style={{ height: `${chatHeight}px` }}
+      >
         {chatHistory.length === 0 ? (
           <div className="text-center text-gray-500 py-8">
             <p className="text-sm">Try commands like:</p>
