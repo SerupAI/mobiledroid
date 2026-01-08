@@ -21,6 +21,12 @@ from src.routers import (
 )
 
 # Configure structured logging
+import logging
+
+# Set log level based on debug mode
+log_level = logging.DEBUG if settings.debug else logging.INFO
+logging.basicConfig(level=log_level)
+
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,

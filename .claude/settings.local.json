@@ -36,7 +36,10 @@
       "Bash(./scripts/deploy-to-ec2.sh:*)",
       "Bash(python:*)",
       "Bash(git push:*)",
-      "Bash(git rev-parse:*)"
+      "Bash(git rev-parse:*)",
+      "Bash(git tag:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)"
     ]
   }
 }
