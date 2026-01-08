@@ -16,7 +16,7 @@ from src.routers import (
     fingerprints_router,
     stream_router,
     snapshots_router,
-    chat_router,
+    # chat_router,  # TODO: Fix agent import path
 )
 
 # Configure structured logging
@@ -102,7 +102,7 @@ app.include_router(tasks_router)
 app.include_router(fingerprints_router)
 app.include_router(stream_router)
 app.include_router(snapshots_router)
-app.include_router(chat_router)
+# app.include_router(chat_router)  # TODO: Fix agent import path
 
 
 # Health check endpoint

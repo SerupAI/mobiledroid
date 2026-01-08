@@ -16,11 +16,8 @@ from src.services.adb_service import ADBService
 from src.services.fingerprint_service import get_fingerprint_service
 from src.config import settings
 
-# Import agent from the agent package
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../agent"))
-from src.agent import MobileDroidAgent, AgentConfig
+# Import agent from the wrapper module
+from src.agent_wrapper import MobileDroidAgent, AgentConfig
 
 logger = structlog.get_logger()
 
