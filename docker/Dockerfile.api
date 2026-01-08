@@ -20,7 +20,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY packages/api/src ./src
-COPY packages/agent/src ./agent_src
+# Copy agent code and rename src to match imports
+COPY packages/agent/src ./agent_src/src
+# Create __init__.py to make agent_src a package
+RUN touch /app/agent_src/__init__.py
 COPY config ./config
 
 # Create data directory
