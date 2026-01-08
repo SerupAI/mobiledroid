@@ -56,6 +56,7 @@ services:
         # DOCKER_HOST_IP must be set to the public IP when deploying
         NEXT_PUBLIC_API_URL: http://${DOCKER_HOST_IP:-localhost}:${API_PORT:-8100}
         NEXT_PUBLIC_DEBUG: ${DEBUG:-false}
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
     ports:
       - "${UI_PORT:-3100}:3000"
     environment:

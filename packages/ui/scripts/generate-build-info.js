@@ -4,12 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// Get git commit SHA
-let commitSha = 'unknown';
-try {
-  commitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-} catch (error) {
-  console.warn('Failed to get git commit SHA:', error.message);
+// Get git commit SHA from environment or fallback to git command
+let commitSha = process.env.GIT_COMMIT_SHA || 'unknown';
+if (commitSha === 'unknown') {
+  try {
+    commitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+  } catch (error) {
+    console.warn('Failed to get git commit SHA:', error.message);
+  }
 }
 
 // Get build timestamp
