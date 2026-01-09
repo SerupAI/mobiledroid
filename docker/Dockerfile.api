@@ -21,9 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY packages/api/src ./src
 
-# Copy agent library
-COPY lib/agent /app/lib/agent
-
 # Copy config
 COPY config ./config
 
@@ -31,7 +28,7 @@ COPY config ./config
 RUN mkdir -p /app/data
 
 # Environment variables
-ENV PYTHONPATH=/app:/app/lib/agent/src
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
