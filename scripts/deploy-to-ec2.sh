@@ -137,6 +137,10 @@ if [ "$DEPLOY_MODE" = "tag" ]; then
     rm -rf $TEMP_DIR
     echo "Cleaned up temporary directory"
     
+    # Ensure .env file exists from .env.example and add required keys
+    echo "Setting up .env file on EC2..."
+    ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && cp .env.example .env && echo 'ANTHROPIC_API_KEY=sk-ant-api03-_yF6CqzT_gPXr5Wz_5rF2vTQeOg8wG5ow0uLtKyS8Xa4_Z6N8-vJpOJlE0lZ8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8ZZ8ZAA' >> .env && echo 'DEBUG=true' >> .env && echo 'NEXT_PUBLIC_DEBUG=true' >> .env"
+    
 else
     # Sync local code to EC2
     echo "Syncing local code to EC2..."
@@ -150,6 +154,10 @@ else
       --exclude '*.pem' \
       -e "ssh -i $SSH_KEY" \
       ./ $EC2_USER@$EC2_HOST:/home/ubuntu/mobiledroid/
+      
+    # Ensure .env file exists if not already synced
+    echo "Ensuring .env file exists on EC2..."
+    ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && if [ ! -f .env ]; then cp .env.example .env && echo 'ANTHROPIC_API_KEY=sk-ant-api03-_yF6CqzT_gPXr5Wz_5rF2vTQeOg8wG5ow0uLtKyS8Xa4_Z6N8-vJpOJlE0lZ8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8ZZ8ZAA' >> .env && echo 'DEBUG=true' >> .env && echo 'NEXT_PUBLIC_DEBUG=true' >> .env; fi"
 fi
 
 # Build and restart containers on EC2
