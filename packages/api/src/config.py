@@ -19,7 +19,13 @@ class Settings(BaseSettings):
     app_name: str = "MobileDroid API"
     app_version: str = "0.1.0"
     debug: bool = False
-    commit_sha: str = "unknown"  # Set at build time via environment
+    git_commit_sha: str = "unknown"  # Set at build time via environment
+    commit_sha: str = "unknown"  # Alias for backwards compatibility
+
+    def model_post_init(self, __context) -> None:
+        """Set commit_sha from git_commit_sha after initialization."""
+        if self.git_commit_sha != "unknown":
+            object.__setattr__(self, "commit_sha", self.git_commit_sha)
 
     # API
     api_host: str = "0.0.0.0"
