@@ -62,7 +62,7 @@ class Task(Base, TimestampMixin):
 
     # Status tracking
     status: Mapped[TaskStatus] = mapped_column(
-        Enum(TaskStatus),
+        Enum(TaskStatus, values_callable=lambda x: [e.value for e in x]),
         default=TaskStatus.PENDING,
         nullable=False,
     )
@@ -71,7 +71,7 @@ class Task(Base, TimestampMixin):
 
     # Priority and scheduling
     priority: Mapped[TaskPriority] = mapped_column(
-        Enum(TaskPriority),
+        Enum(TaskPriority, values_callable=lambda x: [e.value for e in x]),
         default=TaskPriority.NORMAL,
         nullable=False,
     )
@@ -118,7 +118,7 @@ class TaskLog(Base):
 
     # Log content
     level: Mapped[TaskLogLevel] = mapped_column(
-        Enum(TaskLogLevel),
+        Enum(TaskLogLevel, values_callable=lambda x: [e.value for e in x]),
         default=TaskLogLevel.INFO,
         nullable=False,
     )
