@@ -53,7 +53,8 @@
       "Bash(xargs:*)",
       "Bash(find:*)",
       "WebFetch(domain:www.geelark.com)",
-      "WebFetch(domain:pixelscan.net)"
+      "WebFetch(domain:pixelscan.net)",
+      "Bash(git rm:*)"
     ]
   }
 }

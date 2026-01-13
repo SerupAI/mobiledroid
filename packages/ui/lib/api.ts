@@ -68,15 +68,35 @@ export interface Task {
   profile_id: string;
   prompt: string;
   output_format: string | null;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'scheduled' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   result: string | null;
   error_message: string | null;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  scheduled_at: string | null;
+  max_retries: number;
+  retry_count: number;
+  queue_job_id: string | null;
+  queued_at: string | null;
   steps_taken: number;
   tokens_used: number;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskCreate {
+  prompt: string;
+  output_format?: string | null;
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  scheduled_at?: string | null;
+  max_retries?: number;
+  queue_immediately?: boolean;
+}
+
+export interface QueueStats {
+  queued_jobs: number;
+  task_counts: Record<string, number>;
 }
 
 export interface Snapshot {
@@ -295,24 +315,29 @@ class ApiClient {
 
   // Tasks
   async getTasks(
-    profileId: string
+    profileId: string,
+    status?: string
   ): Promise<{ tasks: Task[]; total: number }> {
-    return this.request(`/tasks/profiles/${profileId}`);
+    const params = status ? `?status=${status}` : '';
+    return this.request(`/tasks/profiles/${profileId}${params}`);
+  }
+
+  async getTask(taskId: string): Promise<Task> {
+    return this.request(`/tasks/${taskId}`);
   }
 
   async createTask(
     profileId: string,
-    prompt: string,
-    outputFormat?: string
+    data: TaskCreate
   ): Promise<Task> {
     return this.request(`/tasks/profiles/${profileId}`, {
       method: 'POST',
-      body: JSON.stringify({ prompt, output_format: outputFormat }),
+      body: JSON.stringify(data),
     });
   }
 
-  async executeTask(taskId: string): Promise<Task> {
-    return this.request(`/tasks/${taskId}/execute`, {
+  async queueTask(taskId: string): Promise<Task> {
+    return this.request(`/tasks/${taskId}/queue`, {
       method: 'POST',
     });
   }
@@ -321,6 +346,22 @@ class ApiClient {
     return this.request(`/tasks/${taskId}/cancel`, {
       method: 'POST',
     });
+  }
+
+  async retryTask(taskId: string): Promise<Task> {
+    return this.request(`/tasks/${taskId}/retry`, {
+      method: 'POST',
+    });
+  }
+
+  async deleteTask(taskId: string): Promise<void> {
+    return this.request(`/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getQueueStats(): Promise<QueueStats> {
+    return this.request('/tasks/queue/stats');
   }
 
   // Snapshots

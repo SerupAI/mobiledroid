@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Smartphone, Settings, LayoutDashboard, History, Camera } from 'lucide-react';
+import { Smartphone, Settings, LayoutDashboard, History, Camera, ListTodo } from 'lucide-react';
 
 export function Header() {
   return (
@@ -41,6 +41,13 @@ export function Header() {
             >
               <Camera className="h-4 w-4" />
               <span>Snapshots</span>
+            </Link>
+            <Link
+              href="/tasks"
+              className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            >
+              <ListTodo className="h-4 w-4" />
+              <span>Tasks</span>
             </Link>
             <Link
               href="/settings"

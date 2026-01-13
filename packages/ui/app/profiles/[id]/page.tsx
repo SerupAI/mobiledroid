@@ -153,7 +153,15 @@ export default function ProfilePage() {
 
               {/* Task history */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-                <h2 className="font-semibold mb-4">Recent Tasks</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold">Recent Tasks</h2>
+                  <Link
+                    href="/tasks"
+                    className="text-xs text-primary-400 hover:text-primary-300"
+                  >
+                    View All
+                  </Link>
+                </div>
                 {tasks.length === 0 ? (
                   <p className="text-gray-500 text-sm">No tasks yet</p>
                 ) : (
@@ -165,25 +173,28 @@ export default function ProfilePage() {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm line-clamp-2">{task.prompt}</p>
-                          <span
-                            className={cn(
-                              'text-xs px-2 py-0.5 rounded',
-                              task.status === 'completed' &&
-                                'bg-green-500/20 text-green-400',
-                              task.status === 'running' &&
-                                'bg-yellow-500/20 text-yellow-400',
-                              task.status === 'failed' &&
-                                'bg-red-500/20 text-red-400',
-                              task.status === 'pending' &&
-                                'bg-gray-500/20 text-gray-400'
-                            )}
-                          >
-                            {task.status}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={cn(
+                                'text-xs px-2 py-0.5 rounded',
+                                task.status === 'completed' && 'bg-green-500/20 text-green-400',
+                                task.status === 'running' && 'bg-orange-500/20 text-orange-400',
+                                task.status === 'queued' && 'bg-yellow-500/20 text-yellow-400',
+                                task.status === 'failed' && 'bg-red-500/20 text-red-400',
+                                task.status === 'cancelled' && 'bg-gray-500/20 text-gray-500',
+                                (task.status === 'pending' || task.status === 'scheduled') && 'bg-gray-500/20 text-gray-400'
+                              )}
+                            >
+                              {task.status}
+                            </span>
+                          </div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {task.steps_taken} steps
-                        </p>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                          <span>{task.steps_taken} steps</span>
+                          {task.tokens_used > 0 && (
+                            <span>{task.tokens_used.toLocaleString()} tokens</span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
