@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid"
 
+    # Redis
+    redis_url: str = "redis://localhost:6379"
+
     # Docker
     docker_network: str = "mobiledroid_network"
     redroid_image: str = "mobiledroid/redroid-custom:latest"

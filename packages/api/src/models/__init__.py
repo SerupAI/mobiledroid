@@ -7,14 +7,18 @@ from src.models.snapshot import Snapshot
 from src.models.llm_provider import LLMProvider
 from src.models.llm_model import LLMModel
 from src.models.integration import Integration
+from src.models.chat import ChatSession, ChatMessage, ChatMessageRole
 
 __all__ = [
-    "Base", 
-    "Profile", 
-    "Task", 
-    "TaskLog", 
+    "Base",
+    "Profile",
+    "Task",
+    "TaskLog",
     "Snapshot",
     "LLMProvider",
-    "LLMModel", 
-    "Integration"
+    "LLMModel",
+    "Integration",
+    "ChatSession",
+    "ChatMessage",
+    "ChatMessageRole",
 ]

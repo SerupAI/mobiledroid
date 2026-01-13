@@ -57,16 +57,31 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     logger.info("Database initialized")
-    
+
+    # Initialize Redis and task queue
+    try:
+        from src.services.redis_service import init_redis, check_redis_health
+        from src.services.task_queue_service import init_task_queue
+
+        await init_redis()
+        await init_task_queue()
+
+        if await check_redis_health():
+            logger.info("Redis and task queue initialized")
+        else:
+            logger.warning("Redis health check failed - task queue may not work")
+    except Exception as e:
+        logger.warning("Failed to initialize Redis/task queue", error=str(e))
+
     # Seed initial data
     try:
         from src.db.session import AsyncSessionLocal
         from src.services.seed_service import SeedService
-        
+
         async with AsyncSessionLocal() as db:
             seed_service = SeedService(db)
             await seed_service.seed_initial_data()
-        
+
         logger.info("Initial data seeded")
     except Exception as e:
         logger.warning("Failed to seed initial data", error=str(e))
@@ -75,6 +90,17 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down MobileDroid API")
+
+    # Close Redis connections
+    try:
+        from src.services.redis_service import close_redis
+        from src.services.task_queue_service import close_task_queue
+
+        await close_task_queue()
+        await close_redis()
+        logger.info("Redis connections closed")
+    except Exception as e:
+        logger.warning("Error closing Redis connections", error=str(e))
 
 
 # Create FastAPI application
@@ -130,15 +156,27 @@ app.include_router(debug_router)
 @app.get("/health", tags=["health"])
 async def health_check():
     """Health check endpoint."""
+    from src.services.redis_service import check_redis_health
+
+    redis_healthy = False
+    try:
+        redis_healthy = await check_redis_health()
+    except Exception:
+        pass
+
     response = {
-        "status": "healthy",
+        "status": "healthy" if redis_healthy else "degraded",
         "version": settings.app_version,
+        "services": {
+            "database": "healthy",  # If we got here, DB is fine
+            "redis": "healthy" if redis_healthy else "unhealthy",
+        },
     }
-    
+
     # Include commit SHA in debug mode
     if settings.debug:
         response["commit_sha"] = settings.commit_sha
-        
+
     return response
 
 

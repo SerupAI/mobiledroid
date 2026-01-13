@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Play,
   Square,
@@ -44,15 +44,20 @@ export function ProfileCard({ profile }: ProfileCardProps) {
     }
   }, [profile.status, startTime]);
 
-  // Poll for status updates while starting
+  // Poll /ready endpoint while starting - this triggers status transition
+  const { data: readiness } = useQuery({
+    queryKey: ['device-ready', profile.id],
+    queryFn: () => api.checkDeviceReady(profile.id),
+    enabled: profile.status === 'starting',
+    refetchInterval: 3000,
+  });
+
+  // When device becomes ready, refresh profiles list to get updated status
   useEffect(() => {
-    if (profile.status === 'starting') {
-      const interval = setInterval(() => {
-        queryClient.invalidateQueries({ queryKey: ['profiles'] });
-      }, 2000);
-      return () => clearInterval(interval);
+    if (readiness?.ready) {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
     }
-  }, [profile.status, queryClient]);
+  }, [readiness?.ready, queryClient]);
 
   const startMutation = useMutation({
     mutationFn: () => api.startProfile(profile.id),

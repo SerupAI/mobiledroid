@@ -127,6 +127,9 @@ class MobileDroidAgent:
                 state = await self.vision.get_state()
                 screenshot_hash = hashlib.md5(state["screenshot"].encode()).hexdigest()
 
+                # Update executor with current screen dimensions for coordinate conversion
+                self.executor.set_screen_size(state["screen_width"], state["screen_height"])
+
                 # Check for stuck state (identical screenshots)
                 is_stuck = await self._check_stuck_state(screenshot_hash, step_number)
                 
@@ -162,8 +165,12 @@ class MobileDroidAgent:
                             total_tokens=self.total_tokens,
                         )
 
-                # Format UI hierarchy for the prompt
-                ui_description = self.vision.format_ui_for_prompt(state["ui_elements"])
+                # Format UI hierarchy for the prompt with percentage coordinates
+                ui_description = self.vision.format_ui_for_prompt(
+                    state["ui_elements"],
+                    state["screen_width"],
+                    state["screen_height"]
+                )
 
                 # Build the message for this step
                 user_content = self._build_step_message(

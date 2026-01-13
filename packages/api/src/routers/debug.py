@@ -146,10 +146,10 @@ async def check_settings_debug():
     """Check what settings values are loaded."""
     from src.config import settings
     import os
-    
+
     return {
         "anthropic_api_key_set": bool(settings.anthropic_api_key),
-        "openai_api_key_set": bool(settings.openai_api_key), 
+        "openai_api_key_set": bool(settings.openai_api_key),
         "anthropic_api_key_length": len(settings.anthropic_api_key or ""),
         "openai_api_key_length": len(settings.openai_api_key or ""),
         "env_anthropic_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
@@ -157,3 +157,61 @@ async def check_settings_debug():
         "env_anthropic_length": len(os.environ.get("ANTHROPIC_API_KEY", "")),
         "env_openai_length": len(os.environ.get("OPENAI_API_KEY", ""))
     }
+
+
+@router.get("/ui-hierarchy/{profile_id}")
+async def get_ui_hierarchy_debug(
+    profile_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get the current UI hierarchy for a profile's device.
+
+    This shows what elements the agent sees and what coordinates it would use.
+    """
+    from src.services.profile_service import ProfileService
+    from src.services.adb_service import ADBService
+    from src.agent.vision import VisionService
+
+    profile_service = ProfileService(db)
+    profile = await profile_service.get_profile(profile_id)
+
+    if not profile:
+        return {"error": "Profile not found"}
+
+    if profile.status != "running":
+        return {"error": f"Profile not running (status: {profile.status})"}
+
+    try:
+        # Connect to device
+        adb_service = ADBService()
+        address = f"mobiledroid-{profile_id}:5555"
+        connected = await adb_service.connect(f"mobiledroid-{profile_id}", 5555)
+
+        if not connected:
+            return {"error": f"Failed to connect to device at {address}"}
+
+        device = adb_service.get_device(address)
+        if not device:
+            return {"error": f"Device not found after connect: {address}"}
+
+        # Get UI hierarchy
+        vision = VisionService(device)
+        state = await vision.get_state()
+
+        # Format the hierarchy as Claude would see it
+        formatted = vision.format_ui_for_prompt(
+            state["ui_elements"],
+            state["screen_width"],
+            state["screen_height"]
+        )
+
+        return {
+            "screen_size": f"{state['screen_width']}x{state['screen_height']}",
+            "element_count": len(state["ui_elements"]),
+            "formatted_hierarchy": formatted,
+            "raw_elements": state["ui_elements"][:20],  # First 20 elements
+        }
+
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}

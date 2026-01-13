@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Loader2, MonitorOff, Server, Wifi, Monitor } from 'lucide-react';
+import { RefreshCw, Loader2, MonitorOff, Server, Wifi, Monitor, Grid } from 'lucide-react';
 import { api } from '@/lib/api';
 
 interface DeviceViewerProps {
@@ -20,10 +20,19 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   const [tapIndicators, setTapIndicators] = useState<Array<{id: number, x: number, y: number}>>([]);
   const [isFocused, setIsFocused] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [lastClickPos, setLastClickPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number; clientX: number; clientY: number } | null>(null);
+  const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const reconnectAttemptsRef = useRef(0);
   const tapIdRef = useRef(0);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Minimum distance (in pixels) to consider it a swipe instead of a tap
+  const SWIPE_THRESHOLD = 30;
 
   // Poll device readiness
   const { data: readiness } = useQuery({
@@ -130,7 +139,7 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
     };
   }, [isReady, profileId]);
 
-  const handleClick = (e: React.MouseEvent<HTMLImageElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
     if (!imgRef.current || !isReady || !isConnected) return;
 
     const rect = imgRef.current.getBoundingClientRect();
@@ -140,19 +149,124 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
     const x = Math.round((e.clientX - rect.left) * scaleX);
     const y = Math.round((e.clientY - rect.top) * scaleY);
 
-    // Send tap command through WebSocket for lower latency
+    setDragStart({ x, y, clientX: e.clientX, clientY: e.clientY });
+    setIsDragging(true);
+    setDragEnd(null);
+  };
+
+  const handleMouseUp = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!imgRef.current || !isReady || !isConnected || !dragStart) {
+      setIsDragging(false);
+      setDragStart(null);
+      setDragEnd(null);
+      return;
+    }
+
+    const rect = imgRef.current.getBoundingClientRect();
+    const scaleX = imgRef.current.naturalWidth / rect.width;
+    const scaleY = imgRef.current.naturalHeight / rect.height;
+
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+
+    // Calculate distance
+    const distance = Math.sqrt(
+      Math.pow(e.clientX - dragStart.clientX, 2) +
+      Math.pow(e.clientY - dragStart.clientY, 2)
+    );
+
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        command: 'tap',
-        x,
-        y
-      }));
-      
-      // Visual feedback - show tap indicator
-      showTapFeedback(e.clientX, e.clientY);
-    } else if (onTap) {
-      // Fallback to HTTP API
-      onTap(x, y);
+      if (distance >= SWIPE_THRESHOLD) {
+        // Swipe gesture
+        wsRef.current.send(JSON.stringify({
+          command: 'swipe',
+          x1: dragStart.x,
+          y1: dragStart.y,
+          x2: x,
+          y2: y,
+          duration: 300
+        }));
+
+        // Visual feedback for swipe
+        setLastClickPos({ x: dragStart.x, y: dragStart.y });
+      } else {
+        // Tap gesture
+        wsRef.current.send(JSON.stringify({
+          command: 'tap',
+          x: dragStart.x,
+          y: dragStart.y
+        }));
+
+        // Visual feedback - show tap indicator
+        showTapFeedback(dragStart.clientX, dragStart.clientY);
+        setLastClickPos({ x: dragStart.x, y: dragStart.y });
+      }
+    } else if (onTap && distance < SWIPE_THRESHOLD) {
+      // Fallback to HTTP API for tap
+      onTap(dragStart.x, dragStart.y);
+    }
+
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    // Click is now handled by mouseUp - this is just for cases where mousedown/up doesn't fire
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!imgRef.current || !isReady) return;
+
+    const rect = imgRef.current.getBoundingClientRect();
+    const scaleX = imgRef.current.naturalWidth / rect.width;
+    const scaleY = imgRef.current.naturalHeight / rect.height;
+
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+
+    setMousePos({ x, y });
+
+    // Update drag end position while dragging
+    if (isDragging && dragStart) {
+      setDragEnd({ x, y });
+    }
+  };
+
+  const handleMouseLeave = (e: React.MouseEvent<HTMLImageElement>) => {
+    setMousePos(null);
+
+    // If we're dragging and mouse leaves, complete the swipe at the edge
+    if (isDragging && dragStart && imgRef.current) {
+      const rect = imgRef.current.getBoundingClientRect();
+      const scaleX = imgRef.current.naturalWidth / rect.width;
+      const scaleY = imgRef.current.naturalHeight / rect.height;
+
+      // Clamp to image bounds
+      const x = Math.max(0, Math.min(imgRef.current.naturalWidth - 1,
+        Math.round((e.clientX - rect.left) * scaleX)));
+      const y = Math.max(0, Math.min(imgRef.current.naturalHeight - 1,
+        Math.round((e.clientY - rect.top) * scaleY)));
+
+      const distance = Math.sqrt(
+        Math.pow(e.clientX - dragStart.clientX, 2) +
+        Math.pow(e.clientY - dragStart.clientY, 2)
+      );
+
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && distance >= SWIPE_THRESHOLD) {
+        wsRef.current.send(JSON.stringify({
+          command: 'swipe',
+          x1: dragStart.x,
+          y1: dragStart.y,
+          x2: x,
+          y2: y,
+          duration: 300
+        }));
+      }
+
+      setIsDragging(false);
+      setDragStart(null);
+      setDragEnd(null);
     }
   };
 
@@ -298,6 +412,19 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
       {/* Connection status indicators - always visible */}
       <ConnectionStatus />
 
+      {/* Grid toggle button - always visible when ready */}
+      {isReady && (
+        <button
+          onClick={() => setShowGrid(!showGrid)}
+          className={`absolute top-12 right-2 z-20 rounded-full bg-gray-800/80 p-2 transition-colors ${
+            showGrid ? 'text-primary-500 bg-gray-700/80' : 'text-gray-400 hover:text-white'
+          }`}
+          title="Toggle coordinate grid"
+        >
+          <Grid className="h-4 w-4" />
+        </button>
+      )}
+
       {/* Typing indicator */}
       {isTyping && (
         <div className="absolute top-2 right-2 z-20 bg-primary-500/20 rounded px-2 py-1 text-xs text-primary-400">
@@ -335,16 +462,83 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
 
         {/* WebSocket stream */}
         {currentFrame && (
-          <img
-            ref={imgRef}
-            src={currentFrame}
-            alt="Device screen"
-            className="w-full h-full object-contain cursor-pointer"
-            onClick={handleClick}
-            draggable={false}
-          />
+          <>
+            <img
+              ref={imgRef}
+              src={currentFrame}
+              alt="Device screen"
+              className={`w-full h-full object-contain ${isDragging ? 'cursor-grabbing' : 'cursor-pointer'}`}
+              onMouseDown={handleMouseDown}
+              onMouseUp={handleMouseUp}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+              draggable={false}
+            />
+
+            {/* Coordinate overlay */}
+            {showGrid && imgRef.current && (
+              <CoordinateOverlay
+                imgRef={imgRef}
+                mousePos={mousePos}
+                lastClickPos={lastClickPos}
+              />
+            )}
+
+            {/* Mouse position tooltip */}
+            {mousePos && imgRef.current && (
+              <div
+                className="absolute z-20 bg-black/80 text-white px-2 py-1 rounded text-xs pointer-events-none"
+                style={{
+                  left: `${(mousePos.x / imgRef.current.naturalWidth) * 100}%`,
+                  top: `${(mousePos.y / imgRef.current.naturalHeight) * 100}%`,
+                  transform: 'translate(-50%, -150%)',
+                }}
+              >
+                {mousePos.x}, {mousePos.y}
+              </div>
+            )}
+          </>
         )}
         
+        {/* Swipe indicator while dragging */}
+        {isDragging && dragStart && dragEnd && imgRef.current && (
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none z-30"
+            viewBox={`0 0 ${imgRef.current.naturalWidth} ${imgRef.current.naturalHeight}`}
+            preserveAspectRatio="xMidYMid meet"
+          >
+            {/* Swipe line */}
+            <line
+              x1={dragStart.x}
+              y1={dragStart.y}
+              x2={dragEnd.x}
+              y2={dragEnd.y}
+              stroke="#3b82f6"
+              strokeWidth="6"
+              strokeLinecap="round"
+              opacity={0.8}
+            />
+            {/* Start point */}
+            <circle
+              cx={dragStart.x}
+              cy={dragStart.y}
+              r="15"
+              fill="#3b82f6"
+              opacity={0.6}
+            />
+            {/* End point / arrow */}
+            <circle
+              cx={dragEnd.x}
+              cy={dragEnd.y}
+              r="20"
+              fill="none"
+              stroke="#3b82f6"
+              strokeWidth="4"
+              opacity={0.8}
+            />
+          </svg>
+        )}
+
         {/* Tap indicators */}
         {tapIndicators.map(tap => (
           <div
@@ -361,5 +555,153 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
         ))}
       </div>
     </div>
+  );
+}
+
+// Coordinate overlay component
+interface CoordinateOverlayProps {
+  imgRef: React.RefObject<HTMLImageElement>;
+  mousePos: { x: number; y: number } | null;
+  lastClickPos: { x: number; y: number } | null;
+}
+
+function CoordinateOverlay({ imgRef, mousePos, lastClickPos }: CoordinateOverlayProps) {
+  if (!imgRef.current) return null;
+
+  const width = imgRef.current.naturalWidth;
+  const height = imgRef.current.naturalHeight;
+  const gridSize = 100; // Grid line every 100 pixels
+
+  // Generate grid lines
+  const verticalLines = [];
+  const horizontalLines = [];
+
+  for (let x = 0; x <= width; x += gridSize) {
+    verticalLines.push(x);
+  }
+
+  for (let y = 0; y <= height; y += gridSize) {
+    horizontalLines.push(y);
+  }
+
+  return (
+    <svg
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      {/* Grid lines */}
+      <g opacity={0.3}>
+        {verticalLines.map((x) => (
+          <line
+            key={`v-${x}`}
+            x1={x}
+            y1={0}
+            x2={x}
+            y2={height}
+            stroke="white"
+            strokeWidth="2"
+          />
+        ))}
+        {horizontalLines.map((y) => (
+          <line
+            key={`h-${y}`}
+            x1={0}
+            y1={y}
+            x2={width}
+            y2={y}
+            stroke="white"
+            strokeWidth="2"
+          />
+        ))}
+      </g>
+
+      {/* Axis labels */}
+      <g opacity={0.7}>
+        {verticalLines.map((x) => (
+          <text
+            key={`vl-${x}`}
+            x={x + 5}
+            y={25}
+            fill="white"
+            fontSize="24"
+            fontWeight="bold"
+            className="select-none"
+          >
+            {x}
+          </text>
+        ))}
+        {horizontalLines.map((y) => (
+          <text
+            key={`hl-${y}`}
+            x={10}
+            y={y + 25}
+            fill="white"
+            fontSize="24"
+            fontWeight="bold"
+            className="select-none"
+          >
+            {y}
+          </text>
+        ))}
+      </g>
+
+      {/* Last click position */}
+      {lastClickPos && (
+        <g>
+          <circle
+            cx={lastClickPos.x}
+            cy={lastClickPos.y}
+            r="15"
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="4"
+          />
+          <circle
+            cx={lastClickPos.x}
+            cy={lastClickPos.y}
+            r="30"
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="2"
+            opacity={0.5}
+          />
+          <text
+            x={lastClickPos.x + 40}
+            y={lastClickPos.y - 20}
+            fill="#ef4444"
+            fontSize="28"
+            fontWeight="bold"
+            className="select-none"
+          >
+            {lastClickPos.x}, {lastClickPos.y}
+          </text>
+        </g>
+      )}
+
+      {/* Mouse hover crosshair */}
+      {mousePos && (
+        <g opacity={0.6}>
+          <line
+            x1={mousePos.x}
+            y1={0}
+            x2={mousePos.x}
+            y2={height}
+            stroke="#3b82f6"
+            strokeWidth="2"
+            strokeDasharray="10,10"
+          />
+          <line
+            x1={0}
+            y1={mousePos.y}
+            x2={width}
+            y2={mousePos.y}
+            stroke="#3b82f6"
+            strokeWidth="2"
+            strokeDasharray="10,10"
+          />
+        </g>
+      )}
+    </svg>
   );
 }

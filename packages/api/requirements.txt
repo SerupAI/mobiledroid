@@ -10,6 +10,10 @@ alembic>=1.13.1
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
 
+# Redis and task queue
+redis>=5.0.0
+arq>=0.26.0
+
 # Validation and serialization
 pydantic>=2.5.3
 pydantic-settings>=2.1.0

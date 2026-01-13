@@ -20,20 +20,31 @@ class VisionService:
     def __init__(self, device: AdbDevice):
         self.device = device
 
-    async def capture_screenshot(self) -> bytes:
-        """Capture a screenshot from the device."""
+    async def capture_screenshot(self) -> tuple[bytes, int, int]:
+        """Capture a screenshot from the device.
+
+        Returns:
+            Tuple of (png_bytes, width, height)
+        """
         loop = asyncio.get_event_loop()
         image = await loop.run_in_executor(None, self.device.screenshot)
+
+        # Get actual image dimensions
+        width, height = image.size
 
         # Convert PIL Image to PNG bytes
         buffer = BytesIO()
         image.save(buffer, format="PNG")
-        return buffer.getvalue()
+        return buffer.getvalue(), width, height
 
-    async def capture_screenshot_base64(self) -> str:
-        """Capture a screenshot and return as base64."""
-        screenshot = await self.capture_screenshot()
-        return base64.standard_b64encode(screenshot).decode("utf-8")
+    async def capture_screenshot_base64(self) -> tuple[str, int, int]:
+        """Capture a screenshot and return as base64.
+
+        Returns:
+            Tuple of (base64_string, width, height)
+        """
+        screenshot_bytes, width, height = await self.capture_screenshot()
+        return base64.standard_b64encode(screenshot_bytes).decode("utf-8"), width, height
 
     async def get_screen_size(self) -> tuple[int, int]:
         """Get the device screen dimensions."""
@@ -54,9 +65,15 @@ class VisionService:
         """Get the UI hierarchy XML."""
         loop = asyncio.get_event_loop()
 
-        # Dump UI hierarchy to stdout
+        # Dump UI hierarchy to a file, then read it
+        # /dev/tty doesn't work reliably across all Android versions
+        await loop.run_in_executor(
+            None, lambda: self.device.shell("uiautomator dump /sdcard/ui_hierarchy.xml")
+        )
+
+        # Read the dumped file
         result = await loop.run_in_executor(
-            None, lambda: self.device.shell("uiautomator dump /dev/tty")
+            None, lambda: self.device.shell("cat /sdcard/ui_hierarchy.xml")
         )
 
         return result
@@ -137,29 +154,46 @@ class VisionService:
         # Capture screenshot and UI hierarchy in parallel
         screenshot_task = asyncio.create_task(self.capture_screenshot_base64())
         hierarchy_task = asyncio.create_task(self.get_ui_hierarchy_parsed())
-        size_task = asyncio.create_task(self.get_screen_size())
 
-        screenshot_b64, ui_elements, screen_size = await asyncio.gather(
-            screenshot_task, hierarchy_task, size_task
+        screenshot_result, ui_elements = await asyncio.gather(
+            screenshot_task, hierarchy_task
         )
+
+        # Unpack screenshot result (base64, width, height)
+        screenshot_b64, img_width, img_height = screenshot_result
 
         return {
             "screenshot": screenshot_b64,
             "ui_elements": ui_elements,
-            "screen_width": screen_size[0],
-            "screen_height": screen_size[1],
+            "screen_width": img_width,
+            "screen_height": img_height,
         }
 
-    def format_ui_for_prompt(self, ui_elements: list[dict[str, Any]]) -> str:
-        """Format UI elements for inclusion in the prompt."""
-        if not ui_elements:
-            return "No UI elements detected."
+    def format_ui_for_prompt(
+        self, ui_elements: list[dict[str, Any]], screen_width: int, screen_height: int
+    ) -> str:
+        """Format UI elements for inclusion in the prompt with percentage coordinates.
 
-        lines = ["UI Elements:", ""]
+        Args:
+            ui_elements: List of UI element dictionaries
+            screen_width: Screen width in pixels for percentage calculation
+            screen_height: Screen height in pixels for percentage calculation
+        """
+        if not ui_elements:
+            return "No UI elements detected. Use visual estimation for coordinates."
+
+        lines = [
+            "UI Elements (USE THESE COORDINATES - they are more accurate than visual estimation):",
+            ""
+        ]
 
         for elem in ui_elements:
             bounds = elem["bounds"]
             center = elem["center"]
+
+            # Calculate percentage coordinates
+            x_percent = round(center["x"] / screen_width, 3)
+            y_percent = round(center["y"] / screen_height, 3)
 
             # Build description
             parts = []
@@ -186,10 +220,10 @@ class VisionService:
 
             flags_str = f" [{', '.join(flags)}]" if flags else ""
 
+            # Show percentage coordinates prominently for Claude to use directly
             line = (
                 f"- {class_name}: {' '.join(parts)}"
-                f" @ center({center['x']}, {center['y']})"
-                f" bounds[{bounds['left']},{bounds['top']},{bounds['right']},{bounds['bottom']}]"
+                f" -> TAP at x={x_percent}, y={y_percent}"
                 f"{flags_str}"
             )
             lines.append(line)

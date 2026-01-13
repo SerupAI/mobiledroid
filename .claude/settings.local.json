@@ -39,7 +39,21 @@
       "Bash(git rev-parse:*)",
       "Bash(git tag:*)",
       "Bash(docker stop:*)",
-      "Bash(docker rm:*)"
+      "Bash(docker rm:*)",
+      "Bash(./scripts/test-local.sh:*)",
+      "WebSearch",
+      "Bash(DOCKER_HOST=ssh://adrna@192.168.1.26 docker build:*)",
+      "Bash(DOCKER_HOST=ssh://adrna@192.168.1.26 docker run:*)",
+      "Bash(DOCKER_HOST=ssh://adrna@192.168.1.26 docker ps:*)",
+      "Bash(DOCKER_HOST=ssh://adrna@192.168.1.26 docker logs:*)",
+      "Bash(DOCKER_HOST=ssh://adrna@192.168.1.26 docker stop:*)",
+      "Bash(DOCKER_HOST=ssh://adrna@192.168.1.26 docker rm:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(xargs:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:www.geelark.com)",
+      "WebFetch(domain:pixelscan.net)"
     ]
   }
 }

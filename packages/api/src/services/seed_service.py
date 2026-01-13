@@ -25,7 +25,13 @@ class SeedService:
         """Seed initial LLM providers, models, and integrations."""
         try:
             await self._seed_providers()
+            await self.db.commit()
+            logger.info("Providers seeded, committing transaction")
+            
             await self._seed_models()
+            await self.db.commit()
+            logger.info("Models seeded, committing transaction")
+            
             await self._seed_integrations()
             await self.db.commit()
             logger.info("Initial data seeded successfully")

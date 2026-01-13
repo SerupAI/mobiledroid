@@ -19,6 +19,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis for task queue
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - mobiledroid_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # API Server
   api:
     build:
@@ -33,6 +48,7 @@ services:
       # Config is copied during build, not mounted (for remote Docker hosts)
     environment:
       - DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+      - REDIS_URL=redis://redis:6379
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DOCKER_NETWORK=mobiledroid_network
@@ -43,6 +59,8 @@ services:
       - mobiledroid_network
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -67,6 +85,35 @@ services:
       - api
     restart: unless-stopped
 
+  # Task Queue Worker
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+      args:
+        GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-unknown}
+    command: arq src.worker.WorkerSettings
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCKER_NETWORK=mobiledroid_network
+      - REDROID_IMAGE=${REDROID_IMAGE:-redroid/redroid:14.0.0-latest}
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - mobiledroid_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    restart: unless-stopped
+
   # ws-scrcpy for web-based device viewing (disabled for now)
   # ws-scrcpy:
   #   image: node:20-alpine
@@ -87,4 +134,5 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
   ws-scrcpy-data:

@@ -2,16 +2,20 @@
 
 import asyncio
 import json
-from typing import Annotated, AsyncGenerator
+import uuid
+from datetime import datetime
+from typing import Annotated, AsyncGenerator, List
 from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 import structlog
 
 from src.db import get_db
 from src.models.profile import ProfileStatus
+from src.models.chat import ChatSession, ChatMessage, ChatMessageRole
 from src.services.profile_service import ProfileService
 from src.services.docker_service import DockerService
 from src.services.adb_service import ADBService
@@ -19,6 +23,13 @@ from src.services.fingerprint_service import get_fingerprint_service
 from src.services.integration_service import IntegrationService, get_integration_service
 from src.models.integration import IntegrationPurpose
 from src.config import settings
+from src.schemas.chat import (
+    ChatSessionSchema,
+    ChatSessionSummarySchema,
+    ChatHistoryResponse,
+    ChatMessageSchema,
+)
+from src.models.chat import ChatSession as ChatSessionModel, ChatMessage as ChatMessageModel, ChatMessageRole
 
 # Import agent from the wrapper module
 from src.agent_wrapper import MobileDroidAgent, AgentConfig
@@ -29,6 +40,80 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Store active chat sessions for cancellation
 active_sessions: dict[str, asyncio.Task] = {}
+
+
+async def create_chat_session(
+    db: AsyncSession,
+    profile_id: str,
+    initial_prompt: str,
+) -> ChatSessionModel:
+    """Create a new chat session in the database."""
+    session = ChatSessionModel(
+        id=str(uuid.uuid4()),
+        profile_id=profile_id,
+        initial_prompt=initial_prompt,
+        status="active",
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+async def save_chat_message(
+    db: AsyncSession,
+    session_id: str,
+    role: ChatMessageRole,
+    content: str,
+    step_number: int | None = None,
+    action_type: str | None = None,
+    action_params: dict | None = None,
+    action_reasoning: str | None = None,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cumulative_tokens: int = 0,
+) -> ChatMessageModel:
+    """Save a chat message to the database."""
+    message = ChatMessageModel(
+        session_id=session_id,
+        role=role,
+        content=content,
+        step_number=step_number,
+        action_type=action_type,
+        action_params=action_params,
+        action_reasoning=action_reasoning,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cumulative_tokens=cumulative_tokens,
+    )
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+    return message
+
+
+async def update_chat_session_totals(
+    db: AsyncSession,
+    session_id: str,
+    total_tokens: int,
+    total_input_tokens: int,
+    total_output_tokens: int,
+    total_steps: int,
+    status: str = "completed",
+) -> None:
+    """Update chat session with final totals."""
+    result = await db.execute(
+        select(ChatSessionModel).where(ChatSessionModel.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if session:
+        session.total_tokens = total_tokens
+        session.total_input_tokens = total_input_tokens
+        session.total_output_tokens = total_output_tokens
+        session.total_steps = total_steps
+        session.status = status
+        session.completed_at = datetime.utcnow()
+        await db.commit()
 
 
 class ChatMessage(BaseModel):
@@ -148,12 +233,13 @@ class StreamingChatAgent:
         """Execute task and stream events in real-time."""
         
         def step_callback(step):
-            # Create step message with reasoning  
+            # Create step message with reasoning
             step_msg = {
                 'type': 'step',
                 'number': len(self.agent.history) // 2 + 1,  # Estimate step number
                 'action': step.action.type.value,
                 'reasoning': step.action.reasoning,
+                'tokens_so_far': self.agent.total_tokens,  # Cumulative tokens used
             }
             
             # Add action details if in debug mode
@@ -184,10 +270,11 @@ class StreamingChatAgent:
         
         # Signal completion
         await self.event_queue.put({
-            'type': 'complete', 
+            'type': 'complete',
             'success': task_result.success,
             'message': task_result.result or task_result.error or 'Task completed',
-            'steps': len(task_result.steps)
+            'steps': len(task_result.steps),
+            'total_tokens': task_result.total_tokens,
         })
 
 
@@ -246,49 +333,94 @@ async def _chat_event_generator(
 
 async def _chat_event_generator_with_cancellation(
     profile_id: str,
-    message: str, 
+    message: str,
     agent: MobileDroidAgent,
     session_key: str,
+    chat_session_id: str,
     debug: bool = False
 ) -> AsyncGenerator[str, None]:
-    """Generate SSE events for chat streaming with cancellation support."""
+    """Generate SSE events for chat streaming with cancellation support and persistence."""
+    from src.db import AsyncSessionLocal
+
+    step_count = 0
+    total_tokens = 0
+    final_status = "completed"
+
     try:
         # Initial thinking message
         yield f"data: {json.dumps({'type': 'thinking', 'message': 'Analyzing the screen...'})}\n\n"
-        
+
         # Create streaming wrapper with cancellation support
         streaming_agent = StreamingChatAgent(agent)
-        
+
         # Start task execution in background
         task = asyncio.create_task(
             streaming_agent.execute_with_streaming(message, debug)
         )
-        
+
         # Register task for cancellation
         active_sessions[session_key] = task
-        
+
         # Stream events as they arrive
         while True:
             try:
                 # Wait for next event with short timeout
                 event = await asyncio.wait_for(streaming_agent.event_queue.get(), timeout=1.0)
-                
+
+                # Persist step messages
+                if event.get('type') == 'step':
+                    step_count += 1
+                    tokens_this_step = event.get('tokens_so_far', 0) - total_tokens
+                    total_tokens = event.get('tokens_so_far', 0)
+
+                    # Save step to database
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            await save_chat_message(
+                                db=db,
+                                session_id=chat_session_id,
+                                role=ChatMessageRole.STEP,
+                                content=event.get('reasoning', ''),
+                                step_number=event.get('number'),
+                                action_type=event.get('action'),
+                                action_reasoning=event.get('reasoning'),
+                                input_tokens=tokens_this_step // 2,
+                                output_tokens=tokens_this_step // 2,
+                                cumulative_tokens=total_tokens,
+                            )
+                    except Exception as e:
+                        logger.error("Failed to save step message", error=str(e))
+
                 # Yield the event
                 yield f"data: {json.dumps(event)}\n\n"
-                
+
                 # Check if this is the completion event
                 if event.get('type') == 'complete':
+                    total_tokens = event.get('total_tokens', total_tokens)
+                    # Save completion message
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            await save_chat_message(
+                                db=db,
+                                session_id=chat_session_id,
+                                role=ChatMessageRole.ASSISTANT,
+                                content=event.get('message', 'Task completed'),
+                                cumulative_tokens=total_tokens,
+                            )
+                    except Exception as e:
+                        logger.error("Failed to save completion message", error=str(e))
                     break
-                    
+
             except asyncio.TimeoutError:
                 # Send heartbeat to keep connection alive
                 yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
-                
+
                 # Check if task was cancelled
                 if task.cancelled():
+                    final_status = "cancelled"
                     yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Chat session was stopped by user'})}\n\n"
                     break
-                
+
                 # Check if task is done
                 if task.done():
                     try:
@@ -296,17 +428,36 @@ async def _chat_event_generator_with_cancellation(
                         # Task completed without sending completion event
                         yield f"data: {json.dumps({'type': 'complete', 'success': False, 'message': 'Task completed unexpectedly', 'steps': 0})}\n\n"
                     except asyncio.CancelledError:
+                        final_status = "cancelled"
                         yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Chat session was stopped by user'})}\n\n"
                     except Exception as e:
+                        final_status = "error"
                         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
                     break
-                    
+
     except asyncio.CancelledError:
+        final_status = "cancelled"
         yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Chat session was stopped by user'})}\n\n"
     except Exception as e:
+        final_status = "error"
         logger.error("Chat stream error", error=str(e))
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     finally:
+        # Update session totals
+        try:
+            async with AsyncSessionLocal() as db:
+                await update_chat_session_totals(
+                    db=db,
+                    session_id=chat_session_id,
+                    total_tokens=total_tokens,
+                    total_input_tokens=total_tokens // 2,
+                    total_output_tokens=total_tokens // 2,
+                    total_steps=step_count,
+                    status=final_status,
+                )
+        except Exception as e:
+            logger.error("Failed to update chat session totals", error=str(e))
+
         # Clean up session
         if session_key in active_sessions:
             del active_sessions[session_key]
@@ -362,18 +513,38 @@ async def chat_with_profile_stream(
         
         # Create session key and register task for cancellation
         session_key = f"chat_{profile_id}"
-        
+
         # Clean up any existing session
         if session_key in active_sessions:
             old_task = active_sessions[session_key]
             if not old_task.done():
                 old_task.cancel()
             del active_sessions[session_key]
-        
+
+        # Create chat session in database
+        chat_session = await create_chat_session(
+            db=db,
+            profile_id=profile_id,
+            initial_prompt=chat_message.message,
+        )
+
+        # Save user message
+        await save_chat_message(
+            db=db,
+            session_id=chat_session.id,
+            role=ChatMessageRole.USER,
+            content=chat_message.message,
+        )
+
         # Return streaming response with cancellation support
         return StreamingResponse(
             _chat_event_generator_with_cancellation(
-                profile_id, chat_message.message, agent, session_key, debug=settings.debug
+                profile_id=profile_id,
+                message=chat_message.message,
+                agent=agent,
+                session_key=session_key,
+                chat_session_id=chat_session.id,
+                debug=settings.debug,
             ),
             media_type="text/event-stream"
         )
@@ -401,6 +572,175 @@ async def stop_chat(profile_id: str):
         return {"success": True, "message": "Chat session stopped"}
     
     return {"success": False, "message": "No active chat session found"}
+
+
+@router.get("/profiles/{profile_id}/history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    profile_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get chat history for a specific profile."""
+    # Get total count
+    count_result = await db.execute(
+        select(func.count(ChatSessionModel.id)).where(
+            ChatSessionModel.profile_id == profile_id
+        )
+    )
+    total_sessions = count_result.scalar() or 0
+
+    # Get sessions with message counts
+    result = await db.execute(
+        select(ChatSessionModel)
+        .where(ChatSessionModel.profile_id == profile_id)
+        .order_by(ChatSessionModel.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    sessions = result.scalars().all()
+
+    # Calculate message counts and total tokens
+    session_summaries = []
+    total_tokens = 0
+
+    for session in sessions:
+        # Count messages for this session
+        msg_count_result = await db.execute(
+            select(func.count(ChatMessageModel.id)).where(
+                ChatMessageModel.session_id == session.id
+            )
+        )
+        message_count = msg_count_result.scalar() or 0
+
+        session_summaries.append(
+            ChatSessionSummarySchema(
+                id=session.id,
+                profile_id=session.profile_id,
+                initial_prompt=session.initial_prompt,
+                status=session.status,
+                total_tokens=session.total_tokens,
+                total_steps=session.total_steps,
+                created_at=session.created_at,
+                completed_at=session.completed_at,
+                message_count=message_count,
+            )
+        )
+        total_tokens += session.total_tokens
+
+    return ChatHistoryResponse(
+        sessions=session_summaries,
+        total_tokens=total_tokens,
+        total_sessions=total_sessions,
+    )
+
+
+@router.get("/sessions/{session_id}", response_model=ChatSessionSchema)
+async def get_chat_session(
+    session_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get a specific chat session with all its messages."""
+    result = await db.execute(
+        select(ChatSessionModel).where(ChatSessionModel.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    # Get messages
+    msg_result = await db.execute(
+        select(ChatMessageModel)
+        .where(ChatMessageModel.session_id == session_id)
+        .order_by(ChatMessageModel.created_at)
+    )
+    messages = msg_result.scalars().all()
+
+    return ChatSessionSchema(
+        id=session.id,
+        profile_id=session.profile_id,
+        initial_prompt=session.initial_prompt,
+        status=session.status,
+        total_tokens=session.total_tokens,
+        total_input_tokens=session.total_input_tokens,
+        total_output_tokens=session.total_output_tokens,
+        total_steps=session.total_steps,
+        created_at=session.created_at,
+        completed_at=session.completed_at,
+        messages=[
+            ChatMessageSchema(
+                id=msg.id,
+                role=msg.role,
+                content=msg.content,
+                step_number=msg.step_number,
+                action_type=msg.action_type,
+                action_reasoning=msg.action_reasoning,
+                input_tokens=msg.input_tokens,
+                output_tokens=msg.output_tokens,
+                cumulative_tokens=msg.cumulative_tokens,
+                created_at=msg.created_at,
+            )
+            for msg in messages
+        ],
+    )
+
+
+@router.get("/history", response_model=ChatHistoryResponse)
+async def get_all_chat_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = 100,
+    offset: int = 0,
+):
+    """Get chat history across all profiles (for cost tracking)."""
+    # Get total count
+    count_result = await db.execute(select(func.count(ChatSessionModel.id)))
+    total_sessions = count_result.scalar() or 0
+
+    # Get total tokens
+    tokens_result = await db.execute(
+        select(func.sum(ChatSessionModel.total_tokens))
+    )
+    total_tokens = tokens_result.scalar() or 0
+
+    # Get sessions
+    result = await db.execute(
+        select(ChatSessionModel)
+        .order_by(ChatSessionModel.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    sessions = result.scalars().all()
+
+    session_summaries = []
+    for session in sessions:
+        # Count messages for this session
+        msg_count_result = await db.execute(
+            select(func.count(ChatMessageModel.id)).where(
+                ChatMessageModel.session_id == session.id
+            )
+        )
+        message_count = msg_count_result.scalar() or 0
+
+        session_summaries.append(
+            ChatSessionSummarySchema(
+                id=session.id,
+                profile_id=session.profile_id,
+                initial_prompt=session.initial_prompt,
+                status=session.status,
+                total_tokens=session.total_tokens,
+                total_steps=session.total_steps,
+                created_at=session.created_at,
+                completed_at=session.completed_at,
+                message_count=message_count,
+            )
+        )
+
+    return ChatHistoryResponse(
+        sessions=session_summaries,
+        total_tokens=total_tokens,
+        total_sessions=total_sessions,
+    )
 
 
 @router.get("/examples")

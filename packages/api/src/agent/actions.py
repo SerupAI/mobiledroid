@@ -77,6 +77,31 @@ class ActionExecutor:
 
     def __init__(self, device: AdbDevice):
         self.device = device
+        self.screen_width: int = 1080  # Default, will be updated
+        self.screen_height: int = 2400  # Default, will be updated
+
+    def set_screen_size(self, width: int, height: int) -> None:
+        """Set the screen dimensions for coordinate conversion."""
+        self.screen_width = width
+        self.screen_height = height
+
+    def _to_pixels(self, x_percent: float, y_percent: float) -> tuple[int, int]:
+        """Convert percentage coordinates (0.0-1.0) to pixel coordinates.
+
+        Clamps values to valid range to prevent out-of-bounds taps.
+        """
+        # Warn if out of range before clamping
+        if x_percent > 1.0 or y_percent > 1.0 or x_percent < 0.0 or y_percent < 0.0:
+            logger.warning("Coordinates out of range, clamping to valid range",
+                          x_percent=x_percent, y_percent=y_percent)
+
+        # Clamp to valid range (0.0-1.0)
+        x_clamped = max(0.0, min(1.0, x_percent))
+        y_clamped = max(0.0, min(1.0, y_percent))
+
+        x = int(x_clamped * self.screen_width)
+        y = int(y_clamped * self.screen_height)
+        return x, y
 
     async def execute(self, action: Action) -> dict[str, Any]:
         """Execute an action and return the result."""
@@ -116,12 +141,19 @@ class ActionExecutor:
 
     async def _tap(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute a tap action (supports long press with duration)."""
-        x = int(params["x"])
-        y = int(params["y"])
+        # Convert percentage coordinates (0.0-1.0) to pixel coordinates
+        x_percent = float(params["x"])
+        y_percent = float(params["y"])
+        x, y = self._to_pixels(x_percent, y_percent)
+
         duration = params.get("duration")  # Duration in milliseconds
         post_delay = params.get("post_delay", 300)  # Wait after tap for response
 
-        logger.debug("Executing tap action", x=x, y=y, duration=duration, post_delay=post_delay)
+        logger.debug("Executing tap action",
+                    x_percent=x_percent, y_percent=y_percent,
+                    x_pixels=x, y_pixels=y,
+                    screen=f"{self.screen_width}x{self.screen_height}",
+                    duration=duration, post_delay=post_delay)
         
         loop = asyncio.get_event_loop()
         
@@ -146,16 +178,23 @@ class ActionExecutor:
             logger.debug(f"Waiting {post_delay}ms for UI response after {result_type}")
             await asyncio.sleep(post_delay / 1000.0)
         
-        return {"success": True, "x": x, "y": y, "type": result_type, "duration": duration, "post_delay": post_delay}
+        return {"success": True, "x": x, "y": y, "x_percent": x_percent, "y_percent": y_percent, "type": result_type, "duration": duration, "post_delay": post_delay}
 
     async def _double_tap(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute a double tap action."""
-        x = int(params["x"])
-        y = int(params["y"])
+        # Convert percentage coordinates (0.0-1.0) to pixel coordinates
+        x_percent = float(params["x"])
+        y_percent = float(params["y"])
+        x, y = self._to_pixels(x_percent, y_percent)
+
         delay = params.get("delay", 300)  # Delay between taps in milliseconds (increased from 150)
         post_delay = params.get("post_delay", 800)  # Wait after double tap for app response
 
-        logger.debug("Executing double tap action", x=x, y=y, delay=delay, post_delay=post_delay)
+        logger.debug("Executing double tap action",
+                    x_percent=x_percent, y_percent=y_percent,
+                    x_pixels=x, y_pixels=y,
+                    screen=f"{self.screen_width}x{self.screen_height}",
+                    delay=delay, post_delay=post_delay)
         
         loop = asyncio.get_event_loop()
         
@@ -177,15 +216,27 @@ class ActionExecutor:
             logger.debug(f"Waiting {post_delay}ms for app response after double tap")
             await asyncio.sleep(post_delay / 1000.0)
         
-        return {"success": True, "x": x, "y": y, "type": "double_tap", "delay": delay, "post_delay": post_delay}
+        return {"success": True, "x": x, "y": y, "x_percent": x_percent, "y_percent": y_percent, "type": "double_tap", "delay": delay, "post_delay": post_delay}
 
     async def _swipe(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute a swipe action."""
-        x1 = int(params["x1"])
-        y1 = int(params["y1"])
-        x2 = int(params["x2"])
-        y2 = int(params["y2"])
+        # Convert percentage coordinates (0.0-1.0) to pixel coordinates
+        x1_percent = float(params["x1"])
+        y1_percent = float(params["y1"])
+        x2_percent = float(params["x2"])
+        y2_percent = float(params["y2"])
+
+        x1, y1 = self._to_pixels(x1_percent, y1_percent)
+        x2, y2 = self._to_pixels(x2_percent, y2_percent)
+
         duration = float(params.get("duration", 300)) / 1000  # Convert to seconds
+
+        logger.debug("Executing swipe action",
+                    start_percent=f"({x1_percent}, {y1_percent})",
+                    end_percent=f"({x2_percent}, {y2_percent})",
+                    start_pixels=f"({x1}, {y1})",
+                    end_pixels=f"({x2}, {y2})",
+                    screen=f"{self.screen_width}x{self.screen_height}")
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(

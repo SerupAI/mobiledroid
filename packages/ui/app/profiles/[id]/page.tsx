@@ -1,13 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Square, Settings, Loader2 } from 'lucide-react';
+import { ArrowLeft, Square, Settings, Loader2, Camera } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { DeviceViewerWS } from '@/components/DeviceViewerWS';
 import { DeviceControls } from '@/components/DeviceControls';
 import { DeviceChat } from '@/components/DeviceChat';
+import { SnapshotList } from '@/components/SnapshotList';
+import { CreateSnapshotModal } from '@/components/CreateSnapshotModal';
 import { api } from '@/lib/api';
 import { cn, getStatusColor } from '@/lib/utils';
 
@@ -15,6 +18,7 @@ export default function ProfilePage() {
   const params = useParams();
   const profileId = params.id as string;
   const queryClient = useQueryClient();
+  const [showCreateSnapshot, setShowCreateSnapshot] = useState(false);
 
   const { data: profile, isLoading, error } = useQuery({
     queryKey: ['profile', profileId],
@@ -225,8 +229,24 @@ export default function ProfilePage() {
                   </div>
                 </div>
               </div>
+
+              {/* Snapshots */}
+              <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold">Snapshots</h2>
+                  <button
+                    onClick={() => setShowCreateSnapshot(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary-600 text-white rounded hover:bg-primary-700"
+                  >
+                    <Camera className="h-4 w-4" />
+                    Create Snapshot
+                  </button>
+                </div>
+                <SnapshotList profileId={profileId} compact />
+              </div>
             </div>
           </div>
+
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-400 mb-4">
@@ -239,6 +259,15 @@ export default function ProfilePage() {
               Go to Dashboard
             </Link>
           </div>
+        )}
+
+        {/* Create Snapshot Modal */}
+        {showCreateSnapshot && (
+          <CreateSnapshotModal
+            profileId={profileId}
+            profileName={profile.name}
+            onClose={() => setShowCreateSnapshot(false)}
+          />
         )}
       </main>
     </div>

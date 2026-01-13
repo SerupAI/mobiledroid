@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 import enum
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.base import Base, TimestampMixin
@@ -17,10 +17,21 @@ class TaskStatus(str, enum.Enum):
     """Task execution status."""
 
     PENDING = "pending"
+    SCHEDULED = "scheduled"  # Waiting for scheduled time
+    QUEUED = "queued"  # In Redis queue, waiting for worker
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class TaskPriority(str, enum.Enum):
+    """Task priority levels."""
+
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
 
 
 class TaskLogLevel(str, enum.Enum):
@@ -57,6 +68,20 @@ class Task(Base, TimestampMixin):
     )
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Priority and scheduling
+    priority: Mapped[TaskPriority] = mapped_column(
+        Enum(TaskPriority),
+        default=TaskPriority.NORMAL,
+        nullable=False,
+    )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    max_retries: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Queue tracking
+    queue_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Timing
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -1,24 +1,32 @@
 """Task execution API routes."""
 
 from datetime import datetime
-from typing import Annotated, Any
-import asyncio
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid6 import uuid7
 import structlog
 
 from src.db import get_db
 from src.models.profile import Profile, ProfileStatus
-from src.models.task import Task, TaskStatus, TaskLog, TaskLogLevel
-from src.schemas.task import TaskCreate, TaskResponse, TaskListResponse
+from src.models.task import Task, TaskStatus, TaskPriority
+from src.schemas.task import (
+    TaskCreate,
+    TaskResponse,
+    TaskListResponse,
+    QueueStatsResponse,
+)
+from src.services.task_queue_service import TaskQueueService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 logger = structlog.get_logger()
+
+
+def get_task_queue_service(db: AsyncSession) -> TaskQueueService:
+    """Get task queue service instance."""
+    return TaskQueueService(db)
 
 
 @router.post(
@@ -31,11 +39,15 @@ async def create_task(
     data: TaskCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TaskResponse:
-    """Create a new AI task for a profile."""
-    # Check profile exists and is running
-    result = await db.execute(
-        select(Profile).where(Profile.id == profile_id)
-    )
+    """Create a new AI task for a profile.
+
+    The task can be:
+    - Queued immediately for execution
+    - Scheduled for future execution
+    - Created as pending (manual queue later)
+    """
+    # Check profile exists
+    result = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = result.scalar_one_or_none()
 
     if not profile:
@@ -44,26 +56,46 @@ async def create_task(
             detail=f"Profile {profile_id} not found",
         )
 
-    if profile.status != ProfileStatus.RUNNING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Profile must be running to execute tasks",
+    # For immediate execution, profile must be running
+    # For scheduled tasks, we'll check at execution time
+    if data.queue_immediately and not data.scheduled_at:
+        if profile.status != ProfileStatus.RUNNING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Profile must be running for immediate task execution",
+            )
+
+    # Map priority string to enum
+    priority = TaskPriority(data.priority)
+
+    queue_service = get_task_queue_service(db)
+
+    if data.queue_immediately:
+        task = await queue_service.create_and_queue_task(
+            profile_id=profile_id,
+            prompt=data.prompt,
+            output_format=data.output_format,
+            priority=priority,
+            scheduled_at=data.scheduled_at,
+            max_retries=data.max_retries,
+        )
+    else:
+        task = await queue_service.create_task(
+            profile_id=profile_id,
+            prompt=data.prompt,
+            output_format=data.output_format,
+            priority=priority,
+            scheduled_at=data.scheduled_at,
+            max_retries=data.max_retries,
         )
 
-    # Create task
-    task = Task(
-        id=str(uuid7()),
+    logger.info(
+        "Created task",
+        task_id=task.id,
         profile_id=profile_id,
-        prompt=data.prompt,
-        output_format=data.output_format,
-        status=TaskStatus.PENDING,
+        queued=data.queue_immediately,
+        scheduled_at=data.scheduled_at,
     )
-
-    db.add(task)
-    await db.flush()
-    await db.refresh(task)
-
-    logger.info("Created task", task_id=task.id, profile_id=profile_id)
 
     return TaskResponse.model_validate(task)
 
@@ -72,14 +104,13 @@ async def create_task(
 async def list_tasks(
     profile_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    status_filter: TaskStatus | None = Query(None, alias="status"),
     skip: int = 0,
     limit: int = 50,
 ) -> TaskListResponse:
     """List tasks for a profile."""
     # Check profile exists
-    result = await db.execute(
-        select(Profile).where(Profile.id == profile_id)
-    )
+    result = await db.execute(select(Profile).where(Profile.id == profile_id))
     profile = result.scalar_one_or_none()
 
     if not profile:
@@ -88,15 +119,13 @@ async def list_tasks(
             detail=f"Profile {profile_id} not found",
         )
 
-    # Get tasks
-    result = await db.execute(
-        select(Task)
-        .where(Task.profile_id == profile_id)
-        .order_by(Task.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+    queue_service = get_task_queue_service(db)
+    tasks = await queue_service.list_tasks(
+        profile_id=profile_id,
+        status=status_filter,
+        limit=limit,
+        offset=skip,
     )
-    tasks = list(result.scalars().all())
 
     # Get total count
     count_result = await db.execute(
@@ -110,48 +139,42 @@ async def list_tasks(
     )
 
 
+@router.get("/queue/stats", response_model=QueueStatsResponse)
+async def get_queue_stats(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> QueueStatsResponse:
+    """Get task queue statistics."""
+    queue_service = get_task_queue_service(db)
+    stats = await queue_service.get_queue_stats()
+    return QueueStatsResponse(**stats)
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TaskResponse:
     """Get a task by ID."""
-    result = await db.execute(
-        select(Task).where(Task.id == task_id)
-    )
-    task = result.scalar_one_or_none()
+    queue_service = get_task_queue_service(db)
+    task = await queue_service.get_task(task_id)
 
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} not found",
         )
-
-    # Load logs
-    logs_result = await db.execute(
-        select(TaskLog)
-        .where(TaskLog.task_id == task_id)
-        .order_by(TaskLog.created_at)
-    )
-    task.logs = list(logs_result.scalars().all())
 
     return TaskResponse.model_validate(task)
 
 
-@router.post("/{task_id}/execute", response_model=TaskResponse)
-async def execute_task(
+@router.post("/{task_id}/queue", response_model=TaskResponse)
+async def queue_task(
     task_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TaskResponse:
-    """Execute a pending task.
-
-    This starts the AI agent to perform the task.
-    For real-time updates, use the /stream endpoint.
-    """
-    result = await db.execute(
-        select(Task).where(Task.id == task_id)
-    )
-    task = result.scalar_one_or_none()
+    """Queue a pending task for execution."""
+    queue_service = get_task_queue_service(db)
+    task = await queue_service.get_task(task_id)
 
     if not task:
         raise HTTPException(
@@ -159,10 +182,10 @@ async def execute_task(
             detail=f"Task {task_id} not found",
         )
 
-    if task.status != TaskStatus.PENDING:
+    if task.status not in (TaskStatus.PENDING, TaskStatus.SCHEDULED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Task is {task.status.value}, expected pending",
+            detail=f"Task is {task.status.value}, expected pending or scheduled",
         )
 
     # Check profile is running
@@ -174,30 +197,14 @@ async def execute_task(
     if not profile or profile.status != ProfileStatus.RUNNING:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Profile must be running to execute tasks",
+            detail="Profile must be running to queue tasks",
         )
 
-    # Mark as running
-    task.status = TaskStatus.RUNNING
-    task.started_at = datetime.utcnow()
-    await db.flush()
-
-    # Add log entry
-    log = TaskLog(
-        task_id=task.id,
-        level=TaskLogLevel.INFO,
-        message="Task execution started",
-    )
-    db.add(log)
-    await db.flush()
-
-    logger.info("Started task execution", task_id=task.id)
-
-    # Note: The actual AI agent execution would happen here
-    # For now, return the task with running status
-    # Real implementation would use background task or streaming
-
+    await queue_service.queue_task(task)
     await db.refresh(task)
+
+    logger.info("Queued task", task_id=task.id)
+
     return TaskResponse.model_validate(task)
 
 
@@ -206,11 +213,9 @@ async def cancel_task(
     task_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TaskResponse:
-    """Cancel a running task."""
-    result = await db.execute(
-        select(Task).where(Task.id == task_id)
-    )
-    task = result.scalar_one_or_none()
+    """Cancel a pending, scheduled, or queued task."""
+    queue_service = get_task_queue_service(db)
+    task = await queue_service.cancel_task(task_id)
 
     if not task:
         raise HTTPException(
@@ -218,25 +223,29 @@ async def cancel_task(
             detail=f"Task {task_id} not found",
         )
 
-    if task.status not in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+    return TaskResponse.model_validate(task)
+
+
+@router.post("/{task_id}/retry", response_model=TaskResponse)
+async def retry_task(
+    task_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TaskResponse:
+    """Retry a failed task."""
+    queue_service = get_task_queue_service(db)
+    task = await queue_service.retry_failed_task(task_id)
+
+    if not task:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot cancel task with status {task.status.value}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
         )
 
-    task.status = TaskStatus.CANCELLED
-    task.completed_at = datetime.utcnow()
-
-    log = TaskLog(
-        task_id=task.id,
-        level=TaskLogLevel.INFO,
-        message="Task cancelled by user",
-    )
-    db.add(log)
-    await db.flush()
-    await db.refresh(task)
-
-    logger.info("Cancelled task", task_id=task.id)
+    if task.status == TaskStatus.FAILED and task.retry_count >= task.max_retries:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Task has exceeded max retries ({task.max_retries})",
+        )
 
     return TaskResponse.model_validate(task)
 
@@ -247,9 +256,7 @@ async def delete_task(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Delete a task."""
-    result = await db.execute(
-        select(Task).where(Task.id == task_id)
-    )
+    result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
 
     if not task:
@@ -265,6 +272,6 @@ async def delete_task(
         )
 
     await db.delete(task)
-    await db.flush()
+    await db.commit()
 
     logger.info("Deleted task", task_id=task_id)

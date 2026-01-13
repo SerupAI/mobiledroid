@@ -11,6 +11,7 @@ from src.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from src.models.task import Task
     from src.models.snapshot import Snapshot
+    from src.models.chat import ChatSession
 
 import enum
 
@@ -79,6 +80,13 @@ class Profile(Base, TimestampMixin):
         "Snapshot",
         back_populates="profile",
         cascade="all, delete-orphan",
+    )
+
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        "ChatSession",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="ChatSession.created_at.desc()",
     )
 
     def __repr__(self) -> str:

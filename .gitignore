@@ -78,3 +78,4 @@ secrets/
 tmp/
 temp/
 *.tmp
+omniparser-api/
