@@ -12,6 +12,7 @@ from src.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from src.models.profile import Profile
+    from src.models.task import Task
 
 
 class ChatMessageRole(str, enum.Enum):
@@ -55,6 +56,12 @@ class ChatSession(Base, TimestampMixin):
         back_populates="session",
         cascade="all, delete-orphan",
         order_by="ChatMessage.created_at",
+    )
+    # Back-reference to task (if session was created by a task execution)
+    task: Mapped["Task | None"] = relationship(
+        "Task",
+        back_populates="chat_session",
+        uselist=False,
     )
 
     def __repr__(self) -> str:

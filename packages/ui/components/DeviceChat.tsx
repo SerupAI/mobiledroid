@@ -54,7 +54,14 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
   const [editingMessage, setEditingMessage] = useState<string | null>(null);
   const [lastUserMessage, setLastUserMessage] = useState<string>('');
   const [chatHeight, setChatHeight] = useState(256); // 16rem = 256px
-  const [maxSteps, setMaxSteps] = useState(20);
+  const [maxSteps, setMaxSteps] = useState(() => {
+    // Load from localStorage, default to 5
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('deviceChat_maxSteps');
+      return saved ? parseInt(saved, 10) : 5;
+    }
+    return 5;
+  });
   const [wasStoppedByUser, setWasStoppedByUser] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyData, setHistoryData] = useState<ChatHistoryResponse | null>(null);
@@ -70,6 +77,11 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatHistory]);
+
+  // Persist maxSteps to localStorage
+  useEffect(() => {
+    localStorage.setItem('deviceChat_maxSteps', maxSteps.toString());
+  }, [maxSteps]);
 
   // Load most recent session on mount
   useEffect(() => {
@@ -448,7 +460,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
                 min="1"
                 max="100"
                 value={maxSteps}
-                onChange={(e) => setMaxSteps(parseInt(e.target.value) || 20)}
+                onChange={(e) => setMaxSteps(parseInt(e.target.value) || 5)}
                 className="w-16 px-2 py-1 bg-gray-800 border border-gray-600 rounded text-white"
                 disabled={isStreaming}
               />

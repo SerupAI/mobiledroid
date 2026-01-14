@@ -28,17 +28,20 @@
 | **Session history** | ✅ Working | Replay past agent sessions |
 | **ADB integration** | ✅ Working | Tap, swipe, type, keys |
 | **Profile management** | ✅ Working | Create, start, stop devices |
-| **Basic fingerprinting** | ⚠️ Partial | Model, brand, screen size - not 55+ params |
+| **Task queue** | ✅ Working | Redis-based queue with arq worker |
+| **Task scheduling** | ✅ Working | Schedule tasks for future execution |
+| **Proxy per profile** | ✅ Working | HTTP/SOCKS5 proxy support per device |
+| **Fingerprinting** | ✅ 27+ params | Device ID, build, hardware, network, locale, vendor-specific |
 
 ### What Ditto is MISSING (Gaps)
 
 | Feature | GeeLark | Ditto | Priority |
 |---------|---------|-------|----------|
-| **Proxy per device** | ✅ | ❌ | **P0 - Critical** |
-| **Task queue** | ✅ | ❌ | **P0 - Critical** |
-| **Task scheduling** | ✅ | ❌ | **P0 - Critical** |
+| **Proxy per device** | ✅ | ✅ | ~~P0~~ Done |
+| **Task queue** | ✅ | ✅ | ~~P0~~ Done |
+| **Task scheduling** | ✅ | ✅ | ~~P0~~ Done |
 | **Per-minute metering** | ✅ | ❌ | P2 |
-| **55+ fingerprint params** | ✅ | ❌ | P1 - Important |
+| **55+ fingerprint params** | ✅ | ⚠️ 27 params | P1 - In Progress |
 | **Puppeteer/Selenium API** | ✅ | ❌ | P1 (MCP covers this) |
 | **User auth / accounts** | ✅ | ❌ | P2 |
 | **Team collaboration** | ✅ | ❌ | P2 |
@@ -76,21 +79,92 @@
 
 ## Fingerprint Comparison
 
-### Ditto (Current - Basic)
+### Ditto (Current - 27 Parameters)
 
 ```
 Parameters we spoof:
-- ro.product.model (device model)
-- ro.product.brand (brand name)
-- ro.product.manufacturer
-- ro.build.fingerprint
-- Android version
-- SDK version
-- Screen: width, height, DPI
-- Timezone (optional)
-- Locale (optional)
 
-Total: ~10 parameters
+DEVICE IDENTITY (10)
+- ro.product.model
+- ro.product.brand
+- ro.product.manufacturer
+- ro.product.name
+- ro.product.device
+- ro.product.system.* (model, brand, manufacturer)
+- ro.product.vendor.* (model, brand)
+
+BUILD FINGERPRINT (6)
+- ro.build.fingerprint
+- ro.bootimage.build.fingerprint
+- ro.system.build.fingerprint
+- ro.vendor.build.fingerprint
+- ro.odm.build.fingerprint
+- ro.product.build.fingerprint
+
+BUILD INFO (8)
+- ro.build.id
+- ro.build.display.id
+- ro.build.version.incremental
+- ro.build.type
+- ro.build.tags
+- ro.build.version.sdk
+- ro.build.version.release
+- ro.build.version.release_or_codename
+
+HARDWARE (8)
+- ro.hardware
+- ro.product.board
+- ro.board.platform
+- ro.bootloader
+- ro.boot.hardware
+- ro.product.cpu.abi
+- ro.product.cpu.abilist
+- ro.product.cpu.abilist64/32
+
+SERIAL NUMBER (3)
+- ro.serialno
+- ro.boot.serialno
+- ro.hardware.serial
+
+DISPLAY (4)
+- ro.sf.lcd_density
+- ro.product.display_size
+- ro.surface_flinger.max_frame_buffer_acquired_buffers
+- ro.surface_flinger.refresh_rate_switching
+
+GRAPHICS (3)
+- ro.hardware.egl
+- ro.opengles.version
+- debug.hwui.renderer
+
+NETWORK (4)
+- ro.boot.wifimacaddr
+- persist.wifi.macaddr
+- ro.boot.btmacaddr
+- persist.bluetooth.macaddr
+
+LOCALE (5)
+- persist.sys.timezone
+- persist.sys.locale
+- ro.product.locale
+- persist.sys.language
+- persist.sys.country
+
+VENDOR-SPECIFIC (varies by brand)
+- Samsung: knox, omc
+- Google: gmsversion, hardware.revision
+- OnePlus: oxygen version
+- Xiaomi: miui version/region
+- OPPO/Vivo/Honor/Realme variants
+
+ANTI-EMULATOR (5)
+- ro.kernel.qemu
+- ro.hardware.virtual
+- ro.product.cpu.abilist
+- gsm.version.baseband
+- gsm.version.ril-impl
+
+Total: 27+ core parameters + vendor-specific
 ```
 
 ### GeeLark (Advanced - 55+ Parameters)
@@ -259,11 +333,11 @@ Ditto per-minute breakdown (estimated):
 ### Phase 1: MVP (4-6 weeks)
 **Goal:** Basic feature parity for power users
 
-- [ ] P0: Redis + Task Queue
-- [ ] P0: Task Scheduling
-- [ ] P0: Proxy per profile
+- [x] P0: Redis + Task Queue ✅ (arq worker with task queue)
+- [x] P0: Task Scheduling ✅ (datetime picker in UI)
+- [x] P0: Proxy per profile ✅ (proxy pool implemented)
 - [ ] P0: Copy/paste clipboard
-- [ ] P1: Enhanced fingerprinting (25+ params)
+- [x] P1: Enhanced fingerprinting (25+ params) ✅ (27 params now)
 - [ ] P1: MCP Server
 
 ### Phase 2: SaaS Ready (8-12 weeks)
@@ -288,10 +362,11 @@ Ditto per-minute breakdown (estimated):
 ## Key Takeaways
 
 1. **Our moat is AI** - GeeLark makes users write code; we let them talk to their phone
-2. **Missing table stakes** - Proxy and scheduling are deal-breakers for target users
-3. **Fingerprinting gap** - Our basic 10 params vs their 55+ is a detection risk
+2. ~~**Missing table stakes**~~ - ✅ Proxy and scheduling now implemented!
+3. **Fingerprinting improving** - Now 27+ params (up from 10), approaching parity with GeeLark's 55+
 4. **Price premium justified** - AI value supports 3-7x pricing vs GeeLark
 5. **Open source opportunity** - GeeLark is closed; OSS core could drive adoption
+6. **Phase 1 nearly complete** - Only clipboard and MCP server remaining for MVP
 
 ---
 

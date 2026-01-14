@@ -21,6 +21,7 @@ class ActionType(str, Enum):
     BACK = "back"
     HOME = "home"
     ENTER = "enter"
+    WAIT = "wait"
     DONE = "done"
     FAIL = "fail"
 
@@ -64,6 +65,8 @@ class Action:
             }
         elif action_type == ActionType.TYPE:
             params = {"text": data.get("text", "")}
+        elif action_type == ActionType.WAIT:
+            params = {"duration": data.get("duration", 1000)}  # Default 1 second
         elif action_type == ActionType.DONE:
             params = {"result": data.get("result", "")}
         elif action_type == ActionType.FAIL:
@@ -128,6 +131,8 @@ class ActionExecutor:
                     return await self._home()
                 case ActionType.ENTER:
                     return await self._enter()
+                case ActionType.WAIT:
+                    return await self._wait(action.params)
                 case ActionType.DONE:
                     return {"completed": True, "result": action.params.get("result")}
                 case ActionType.FAIL:
@@ -282,3 +287,13 @@ class ActionExecutor:
             None, lambda: self.device.shell("input keyevent KEYCODE_ENTER")
         )
         return {"success": True}
+
+    async def _wait(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Wait for a specified duration (for loading states, animations, etc.)."""
+        duration_ms = params.get("duration", 1000)
+        duration_s = duration_ms / 1000.0
+
+        logger.debug(f"Waiting {duration_ms}ms for UI to settle")
+        await asyncio.sleep(duration_s)
+
+        return {"success": True, "duration": duration_ms}

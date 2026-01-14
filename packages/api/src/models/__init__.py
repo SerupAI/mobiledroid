@@ -8,6 +8,7 @@ from src.models.llm_provider import LLMProvider
 from src.models.llm_model import LLMModel
 from src.models.integration import Integration
 from src.models.chat import ChatSession, ChatMessage, ChatMessageRole
+from src.models.proxy import Proxy
 
 __all__ = [
     "Base",
@@ -21,4 +22,5 @@ __all__ = [
     "ChatSession",
     "ChatMessage",
     "ChatMessageRole",
+    "Proxy",
 ]

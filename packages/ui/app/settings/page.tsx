@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Settings,
   Server,
@@ -13,17 +13,90 @@ import {
   Palette,
   Save,
   RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Loader2,
 } from 'lucide-react';
 import { Header } from '@/components/Header';
-import { api } from '@/lib/api';
+import { api, LLMProvider } from '@/lib/api';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
+  const queryClient = useQueryClient();
+
+  // Provider API key state
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [savingProvider, setSavingProvider] = useState<string | null>(null);
 
   const { data: health } = useQuery({
     queryKey: ['health'],
     queryFn: () => api.getHealth(),
   });
+
+  const { data: providersData, isLoading: loadingProviders } = useQuery({
+    queryKey: ['settings', 'providers'],
+    queryFn: () => api.getProviders(),
+  });
+
+  const { data: settingsStatus } = useQuery({
+    queryKey: ['settings', 'status'],
+    queryFn: () => api.getSettingsStatus(),
+  });
+
+  const updateProviderMutation = useMutation({
+    mutationFn: ({ providerId, data }: { providerId: string; data: { api_key: string } }) =>
+      api.updateProvider(providerId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
+
+  // Initialize apiKeys state when providers load
+  useEffect(() => {
+    if (providersData?.providers) {
+      const initialKeys: Record<string, string> = {};
+      providersData.providers.forEach((p) => {
+        // Initialize with empty string - user can type new key
+        initialKeys[p.id] = '';
+      });
+      setApiKeys(initialKeys);
+    }
+  }, [providersData]);
+
+  const handleSaveApiKey = async (provider: LLMProvider) => {
+    const newKey = apiKeys[provider.id];
+    if (!newKey) return;
+
+    setSavingProvider(provider.id);
+    try {
+      await updateProviderMutation.mutateAsync({
+        providerId: provider.id,
+        data: { api_key: newKey },
+      });
+      // Clear the input after successful save
+      setApiKeys((prev) => ({ ...prev, [provider.id]: '' }));
+    } finally {
+      setSavingProvider(null);
+    }
+  };
+
+  const handleClearApiKey = async (provider: LLMProvider) => {
+    if (!confirm(`Are you sure you want to remove the API key for ${provider.display_name}?`)) {
+      return;
+    }
+    setSavingProvider(provider.id);
+    try {
+      await updateProviderMutation.mutateAsync({
+        providerId: provider.id,
+        data: { api_key: '' },
+      });
+    } finally {
+      setSavingProvider(null);
+    }
+  };
 
   const tabs = [
     { id: 'general', label: 'General', icon: Settings },
@@ -33,6 +106,8 @@ export default function SettingsPage() {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'appearance', label: 'Appearance', icon: Palette },
   ];
+
+  const providers = providersData?.providers || [];
 
   return (
     <div className="min-h-screen bg-gray-950">
@@ -63,6 +138,15 @@ export default function SettingsPage() {
                 >
                   <tab.icon className="h-4 w-4" />
                   {tab.label}
+                  {tab.id === 'api' && settingsStatus && (
+                    <span className="ml-auto">
+                      {settingsStatus.fully_configured ? (
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-yellow-400" />
+                      )}
+                    </span>
+                  )}
                 </button>
               ))}
             </nav>
@@ -134,35 +218,156 @@ export default function SettingsPage() {
 
               {activeTab === 'api' && (
                 <div>
-                  <h2 className="text-lg font-semibold mb-6">API Keys</h2>
-                  <div className="space-y-6">
+                  <div className="flex items-center justify-between mb-6">
                     <div>
-                      <label className="block text-sm font-medium mb-2">
-                        Anthropic API Key
-                      </label>
-                      <input
-                        type="password"
-                        placeholder="sk-ant-..."
-                        className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      />
-                      <p className="mt-1 text-sm text-gray-400">
-                        Required for AI-powered automation
+                      <h2 className="text-lg font-semibold">API Keys</h2>
+                      <p className="text-sm text-gray-400 mt-1">
+                        Configure API keys for AI providers
                       </p>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">
-                        OpenAI API Key
-                      </label>
-                      <input
-                        type="password"
-                        placeholder="sk-..."
-                        className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      />
-                      <p className="mt-1 text-sm text-gray-400">
-                        Optional, for GPT-4 Vision support
-                      </p>
-                    </div>
+                    {settingsStatus && (
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${
+                        settingsStatus.fully_configured
+                          ? 'bg-green-500/10 text-green-400'
+                          : 'bg-yellow-500/10 text-yellow-400'
+                      }`}>
+                        {settingsStatus.fully_configured ? (
+                          <>
+                            <CheckCircle className="h-4 w-4" />
+                            All configured
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="h-4 w-4" />
+                            Configuration needed
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {loadingProviders ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {providers.map((provider) => (
+                        <div
+                          key={provider.id}
+                          className="rounded-lg border border-gray-700 bg-gray-800/50 p-4"
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-medium">{provider.display_name}</h3>
+                                {provider.has_api_key ? (
+                                  <span className="flex items-center gap-1 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Configured
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-xs bg-gray-500/20 text-gray-400 px-2 py-0.5 rounded">
+                                    <AlertCircle className="h-3 w-3" />
+                                    Not configured
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-400 mt-0.5">
+                                {provider.description || `API key for ${provider.display_name}`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Current key display */}
+                          {provider.has_api_key && (
+                            <div className="mb-3 flex items-center gap-2 text-sm">
+                              <span className="text-gray-400">Current key:</span>
+                              <code className="bg-gray-900 px-2 py-1 rounded text-gray-300">
+                                {provider.api_key_masked}
+                              </code>
+                              <button
+                                onClick={() => handleClearApiKey(provider)}
+                                className="text-red-400 hover:text-red-300 text-xs"
+                                disabled={savingProvider === provider.id}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          )}
+
+                          {/* New key input */}
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <input
+                                type={showKeys[provider.id] ? 'text' : 'password'}
+                                placeholder={provider.has_api_key ? 'Enter new API key to replace...' : `Enter ${provider.display_name} API key...`}
+                                value={apiKeys[provider.id] || ''}
+                                onChange={(e) =>
+                                  setApiKeys((prev) => ({
+                                    ...prev,
+                                    [provider.id]: e.target.value,
+                                  }))
+                                }
+                                className="w-full rounded-lg border border-gray-600 bg-gray-900 px-4 py-2.5 pr-10 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowKeys((prev) => ({
+                                    ...prev,
+                                    [provider.id]: !prev[provider.id],
+                                  }))
+                                }
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                              >
+                                {showKeys[provider.id] ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                            <button
+                              onClick={() => handleSaveApiKey(provider)}
+                              disabled={!apiKeys[provider.id] || savingProvider === provider.id}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {savingProvider === provider.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Save className="h-4 w-4" />
+                              )}
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {providers.length === 0 && (
+                        <p className="text-center text-gray-400 py-8">
+                          No providers found. Check your database configuration.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Integration status */}
+                  {settingsStatus && settingsStatus.missing_integrations.length > 0 && (
+                    <div className="mt-6 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+                      <h4 className="text-sm font-medium text-yellow-400 mb-2">
+                        Missing API Keys for Features
+                      </h4>
+                      <ul className="space-y-1 text-sm text-yellow-300/80">
+                        {settingsStatus.missing_integrations.map((mi) => (
+                          <li key={mi.purpose}>
+                            • <span className="capitalize">{mi.purpose.toLowerCase()}</span>:{' '}
+                            {mi.reason === 'missing_api_key' ? 'API key not configured' : 'Integration inactive'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -305,17 +510,19 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* Save button */}
-              <div className="mt-8 flex justify-end gap-4">
-                <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 transition-colors">
-                  <RefreshCw className="h-4 w-4" />
-                  Reset
-                </button>
-                <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">
-                  <Save className="h-4 w-4" />
-                  Save Changes
-                </button>
-              </div>
+              {/* Save button - only show for non-API tabs since API saves immediately */}
+              {activeTab !== 'api' && (
+                <div className="mt-8 flex justify-end gap-4">
+                  <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-700 text-gray-400 hover:bg-gray-800 transition-colors">
+                    <RefreshCw className="h-4 w-4" />
+                    Reset
+                  </button>
+                  <button className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">
+                    <Save className="h-4 w-4" />
+                    Save Changes
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -32,6 +32,20 @@ async def list_fingerprints(
     }
 
 
+@router.get("/random")
+async def get_random_fingerprint(
+    service: Annotated[FingerprintService, Depends(get_fingerprint_service)],
+) -> dict[str, Any]:
+    """Generate a random device fingerprint.
+
+    Returns a randomly selected device profile with unique identifiers
+    (Android ID, serial number, MAC addresses) generated fresh each time.
+    This is useful for creating new profiles without manually selecting
+    a device type.
+    """
+    return service.generate_random_fingerprint()
+
+
 @router.get("/{device_id}")
 async def get_fingerprint(
     device_id: str,

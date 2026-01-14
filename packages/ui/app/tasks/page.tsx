@@ -18,10 +18,14 @@ import {
   ChevronDown,
   ChevronUp,
   Filter,
+  Plus,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import { Header } from '@/components/Header';
-import { api, Task, QueueStats, Profile } from '@/lib/api';
+import { api, Task, QueueStats, Profile, TaskCreate } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-gray-500/20 text-gray-400 border-gray-600',
@@ -186,6 +190,19 @@ function TaskCard({
             </div>
           )}
 
+          {task.chat_session_id && (
+            <div className="mb-4">
+              <Link
+                href={`/history?session=${task.chat_session_id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-600/30 text-purple-300 rounded hover:bg-purple-600/50 border border-purple-600"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="h-3 w-3" />
+                View Execution Log
+              </Link>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 pt-2 border-t border-gray-700">
             {canQueue && (
               <button
@@ -226,6 +243,209 @@ function TaskCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CreateTaskForm({
+  profiles,
+  onClose,
+  onSuccess,
+}: {
+  profiles: Profile[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [profileId, setProfileId] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [priority, setPriority] = useState<'low' | 'normal' | 'high' | 'urgent'>('normal');
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [queueImmediately, setQueueImmediately] = useState(true);
+  const [maxRetries, setMaxRetries] = useState(3);
+
+  const runningProfiles = profiles.filter(p => p.status === 'running');
+
+  const createMutation = useMutation({
+    mutationFn: (data: TaskCreate) => api.createTask(profileId, data),
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileId || !prompt.trim()) return;
+
+    const data: TaskCreate = {
+      prompt: prompt.trim(),
+      priority,
+      max_retries: maxRetries,
+      queue_immediately: scheduleEnabled ? false : queueImmediately,
+    };
+
+    if (scheduleEnabled && scheduledAt) {
+      data.scheduled_at = new Date(scheduledAt).toISOString();
+      data.queue_immediately = false;
+    }
+
+    createMutation.mutate(data);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-lg border border-gray-700 w-full max-w-lg">
+        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+          <h2 className="text-lg font-semibold">Create New Task</h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-700 rounded"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Profile selector */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Device Profile</label>
+            <select
+              value={profileId}
+              onChange={(e) => setProfileId(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white"
+              required
+            >
+              <option value="">Select a profile...</option>
+              {runningProfiles.length > 0 ? (
+                runningProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))
+              ) : (
+                <option disabled>No running profiles</option>
+              )}
+            </select>
+            {runningProfiles.length === 0 && (
+              <p className="text-xs text-yellow-400 mt-1">
+                Start a profile first to create tasks
+              </p>
+            )}
+          </div>
+
+          {/* Prompt */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Task Prompt</label>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe what the AI should do on the device..."
+              rows={4}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 resize-none"
+              required
+            />
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Priority</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as typeof priority)}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white"
+            >
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+
+          {/* Schedule toggle */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="scheduleEnabled"
+              checked={scheduleEnabled}
+              onChange={(e) => setScheduleEnabled(e.target.checked)}
+              className="rounded border-gray-600 bg-gray-900"
+            />
+            <label htmlFor="scheduleEnabled" className="text-sm">
+              Schedule for later
+            </label>
+          </div>
+
+          {/* Schedule datetime */}
+          {scheduleEnabled && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Scheduled Time</label>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white"
+                required={scheduleEnabled}
+              />
+            </div>
+          )}
+
+          {/* Queue immediately (only when not scheduled) */}
+          {!scheduleEnabled && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="queueImmediately"
+                checked={queueImmediately}
+                onChange={(e) => setQueueImmediately(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-900"
+              />
+              <label htmlFor="queueImmediately" className="text-sm">
+                Queue immediately (start execution right away)
+              </label>
+            </div>
+          )}
+
+          {/* Max retries */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Max Retries</label>
+            <input
+              type="number"
+              value={maxRetries}
+              onChange={(e) => setMaxRetries(parseInt(e.target.value) || 0)}
+              min={0}
+              max={10}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white"
+            />
+          </div>
+
+          {/* Error message */}
+          {createMutation.error && (
+            <div className="p-3 bg-red-900/20 border border-red-800 rounded text-red-300 text-sm">
+              {createMutation.error.message}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm bg-gray-700 text-white rounded hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!profileId || !prompt.trim() || createMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Create Task
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -280,6 +500,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const { data: profilesData } = useQuery({
     queryKey: ['profiles'],
@@ -372,14 +593,35 @@ export default function TasksPage() {
             <h1 className="text-2xl font-bold">Task Queue</h1>
             <p className="text-gray-400">Manage and monitor scheduled tasks</p>
           </div>
-          <button
-            onClick={refreshAll}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700"
+            >
+              <Plus className="h-4 w-4" />
+              Create Task
+            </button>
+            <button
+              onClick={refreshAll}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
         </div>
+
+        {/* Create Task Modal */}
+        {showCreateForm && (
+          <CreateTaskForm
+            profiles={profiles}
+            onClose={() => setShowCreateForm(false)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['allTasks'] });
+              queryClient.invalidateQueries({ queryKey: ['queueStats'] });
+            }}
+          />
+        )}
 
         {/* Queue Stats */}
         {statsLoading ? (

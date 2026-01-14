@@ -20,22 +20,48 @@ class VisionService:
     def __init__(self, device: AdbDevice):
         self.device = device
 
-    async def capture_screenshot(self) -> tuple[bytes, int, int]:
+    async def capture_screenshot(self, max_dimension: int = 1568) -> tuple[bytes, int, int]:
         """Capture a screenshot from the device.
 
+        Args:
+            max_dimension: Maximum dimension (width or height) for the image.
+                          Anthropic's limit for many-image requests is 2000px,
+                          we use 1568 (default) for safety and smaller payloads.
+
         Returns:
-            Tuple of (png_bytes, width, height)
+            Tuple of (png_bytes, original_width, original_height)
+            Note: Returns ORIGINAL dimensions even if image is resized,
+            since UI hierarchy coordinates are in original screen pixels.
         """
         loop = asyncio.get_event_loop()
         image = await loop.run_in_executor(None, self.device.screenshot)
 
-        # Get actual image dimensions
-        width, height = image.size
+        # Get actual image dimensions - KEEP these for coordinate calculations
+        original_width, original_height = image.size
+
+        # Resize if needed to stay within API limits
+        if original_width > max_dimension or original_height > max_dimension:
+            # Calculate new size maintaining aspect ratio
+            if original_width > original_height:
+                new_width = max_dimension
+                new_height = int(original_height * (max_dimension / original_width))
+            else:
+                new_height = max_dimension
+                new_width = int(original_width * (max_dimension / original_height))
+
+            logger.debug(
+                "Resizing screenshot for API limits",
+                original=f"{original_width}x{original_height}",
+                resized=f"{new_width}x{new_height}",
+                max_dimension=max_dimension
+            )
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
         # Convert PIL Image to PNG bytes
         buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        return buffer.getvalue(), width, height
+        image.save(buffer, format="PNG", optimize=True)
+        # Return ORIGINAL dimensions for UI coordinate calculations
+        return buffer.getvalue(), original_width, original_height
 
     async def capture_screenshot_base64(self) -> tuple[str, int, int]:
         """Capture a screenshot and return as base64.

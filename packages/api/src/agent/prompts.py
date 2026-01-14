@@ -54,6 +54,10 @@ Press the Android home button.
 ### enter()
 Press the enter/return key.
 
+### wait(duration)
+Wait for a specified duration (useful for loading states, animations, etc.)
+- duration: time to wait in milliseconds (default 1000)
+
 ### done(result)
 Mark the task as complete and return a result.
 - result: final result or summary of what was accomplished
@@ -83,7 +87,7 @@ If you notice the same screen appearing repeatedly or actions aren't working:
 ## Response Format
 
 Respond with a JSON object containing:
-- action: the action type (tap, swipe, type, back, home, enter, done, fail)
+- action: the action type (tap, swipe, type, back, home, enter, wait, done, fail)
 - parameters: action-specific parameters  
 - reasoning: brief explanation of why this action was chosen
 

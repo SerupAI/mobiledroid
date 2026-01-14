@@ -148,7 +148,7 @@ async def chat_with_device(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ChatResponse:
     """Send a natural language command to control the device.
-    
+
     Examples:
     - "Open the settings app"
     - "Take a screenshot"
@@ -160,23 +160,38 @@ async def chat_with_device(
     profile = await service.get(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    
+
     if profile.status != ProfileStatus.RUNNING:
         raise HTTPException(status_code=400, detail="Profile not running")
-    
+
     # Get integration configuration for chat
     integration_service = IntegrationService(db)
     chat_config = await integration_service.get_chat_config()
-    
+
     if not chat_config:
         raise HTTPException(
             status_code=500,
             detail="No chat integration configured. Please set up LLM provider configuration."
         )
-    
+
     # Get ADB address
     adb_address = f"mobiledroid-{profile_id}:5555"
-    
+
+    # Create chat session in database for tracking
+    chat_session = await create_chat_session(
+        db=db,
+        profile_id=profile_id,
+        initial_prompt=chat_message.message,
+    )
+
+    # Save user message
+    await save_chat_message(
+        db=db,
+        session_id=chat_session.id,
+        role=ChatMessageRole.USER,
+        content=chat_message.message,
+    )
+
     try:
         # Connect to device
         host, port = adb_address.split(":")
@@ -190,31 +205,90 @@ async def chat_with_device(
                 temperature=chat_config.temperature,
             ),
         )
-        
-        # Execute the task
-        logger.info("Executing chat command", message=chat_message.message)
+
+        # Execute the task with step tracking
+        logger.info("Executing chat command", message=chat_message.message, session_id=chat_session.id)
+
+        step_count = 0
+        cumulative_tokens = 0
+
+        async def on_step(step):
+            nonlocal step_count, cumulative_tokens
+            step_count += 1
+            tokens_this_step = agent.total_tokens - cumulative_tokens
+            cumulative_tokens = agent.total_tokens
+
+            # Save step to database
+            await save_chat_message(
+                db=db,
+                session_id=chat_session.id,
+                role=ChatMessageRole.STEP,
+                content=step.action.reasoning,
+                step_number=step.step_number,
+                action_type=step.action.type.value,
+                action_params=step.action.params,
+                action_reasoning=step.action.reasoning,
+                input_tokens=tokens_this_step // 2,
+                output_tokens=tokens_this_step // 2,
+                cumulative_tokens=cumulative_tokens,
+            )
+
         result = await agent.execute_task(
             task=chat_message.message,
             output_format=None,
+            on_step=on_step,
         )
-        
+
         if result.success:
             response_text = result.result or "Task completed successfully"
-            # Add step summary if multiple steps
             if len(result.steps) > 1:
                 response_text += f"\n\n(Completed in {len(result.steps)} steps)"
+            final_status = "completed"
         else:
             response_text = f"Task failed: {result.error}"
-        
+            final_status = "error"
+
+        # Save completion message
+        await save_chat_message(
+            db=db,
+            session_id=chat_session.id,
+            role=ChatMessageRole.ASSISTANT,
+            content=response_text,
+            cumulative_tokens=result.total_tokens,
+        )
+
+        # Update session totals
+        await update_chat_session_totals(
+            db=db,
+            session_id=chat_session.id,
+            total_tokens=result.total_tokens,
+            total_input_tokens=result.total_tokens // 2,
+            total_output_tokens=result.total_tokens // 2,
+            total_steps=len(result.steps),
+            status=final_status,
+        )
+
         return ChatResponse(
             success=result.success,
             response=response_text,
             steps_taken=len(result.steps),
             error=result.error,
         )
-        
+
     except Exception as e:
-        logger.error("Chat execution error", error=str(e))
+        logger.error("Chat execution error", error=str(e), session_id=chat_session.id)
+
+        # Update session as error
+        await update_chat_session_totals(
+            db=db,
+            session_id=chat_session.id,
+            total_tokens=0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            total_steps=0,
+            status="error",
+        )
+
         return ChatResponse(
             success=False,
             response="An error occurred while executing your command",

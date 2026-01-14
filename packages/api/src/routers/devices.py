@@ -267,3 +267,49 @@ async def get_ui_hierarchy(
         success=hierarchy is not None,
         data={"hierarchy": hierarchy} if hierarchy else None,
     )
+
+
+class PasteAction(BaseModel):
+    """Paste text action payload."""
+
+    text: str = Field(..., min_length=1, max_length=5000, description="Text to paste")
+
+
+@router.post("/{profile_id}/paste", response_model=ActionResponse)
+async def paste_text(
+    profile_id: str,
+    action: PasteAction,
+    service: Annotated[ProfileService, Depends(get_profile_service)],
+    adb: Annotated[ADBService, Depends(get_adb_service)],
+) -> ActionResponse:
+    """Paste text to the device.
+
+    This attempts to set the clipboard and paste, falling back to
+    typing the text if clipboard access is not available.
+    """
+    address = await get_profile_adb_address(profile_id, service)
+    success = await adb.set_clipboard(address, action.text)
+    return ActionResponse(
+        success=success,
+        message="Text pasted" if success else "Paste failed",
+    )
+
+
+@router.get("/{profile_id}/clipboard", response_model=ActionResponse)
+async def get_clipboard(
+    profile_id: str,
+    service: Annotated[ProfileService, Depends(get_profile_service)],
+    adb: Annotated[ADBService, Depends(get_adb_service)],
+) -> ActionResponse:
+    """Get clipboard contents from the device.
+
+    Note: This requires a clipboard helper app to be installed.
+    Returns null if clipboard cannot be read.
+    """
+    address = await get_profile_adb_address(profile_id, service)
+    content = await adb.get_clipboard(address)
+    return ActionResponse(
+        success=content is not None,
+        message="Clipboard read" if content else "Could not read clipboard",
+        data={"content": content} if content else None,
+    )

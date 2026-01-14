@@ -11,6 +11,7 @@ from src.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from src.models.profile import Profile
+    from src.models.chat import ChatSession
 
 
 class TaskStatus(str, enum.Enum):
@@ -91,8 +92,20 @@ class Task(Base, TimestampMixin):
     steps_taken: Mapped[int] = mapped_column(default=0, nullable=False)
     tokens_used: Mapped[int] = mapped_column(default=0, nullable=False)
 
+    # Chat session link - task execution creates a chat session
+    chat_session_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("chat_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Relationships
     profile: Mapped["Profile"] = relationship("Profile", back_populates="tasks")
+    chat_session: Mapped["ChatSession | None"] = relationship(
+        "ChatSession",
+        back_populates="task",
+        uselist=False,
+    )
     logs: Mapped[list["TaskLog"]] = relationship(
         "TaskLog",
         back_populates="task",

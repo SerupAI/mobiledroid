@@ -1,6 +1,8 @@
 """Fingerprint service for managing device fingerprints."""
 
 import json
+import random
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -82,27 +84,152 @@ class FingerprintService:
 
         return results
 
+    def generate_random_fingerprint(self) -> dict[str, Any]:
+        """Generate a random fingerprint based on existing device profiles.
+
+        Picks a random device from the loaded profiles and generates unique
+        identifiers (Android ID, serial number, MAC addresses) while keeping
+        the device-specific parameters consistent.
+        """
+        fingerprints = self.get_all_fingerprints()
+        if not fingerprints:
+            # Fallback to a default Pixel fingerprint
+            base = {
+                "id": "random-pixel-8",
+                "name": "Random Pixel 8",
+                "model": "Pixel 8",
+                "brand": "google",
+                "manufacturer": "Google",
+                "product": "shiba",
+                "device": "shiba",
+                "build_fingerprint": "google/shiba/shiba:14/UD1A.231105.004/11010374:user/release-keys",
+                "build_id": "UD1A.231105.004",
+                "build_display": "UD1A.231105.004",
+                "build_incremental": "11010374",
+                "build_type": "user",
+                "build_tags": "release-keys",
+                "android_version": "14",
+                "sdk_version": "34",
+                "screen": {"width": 1080, "height": 2400, "dpi": 420, "refresh_rate": 120},
+                "hardware": "shiba",
+                "board": "shiba",
+                "platform": "gs201",
+                "bootloader": "shiba-14.0.0",
+                "cpu_abi": "arm64-v8a",
+                "supported_abis": ["arm64-v8a", "armeabi-v7a", "armeabi"],
+                "gl_renderer": "Mali-G715 Immortalis MC10",
+                "gl_vendor": "ARM",
+                "wifi_mac_prefix": "3C:28:6D",
+                "bluetooth_mac_prefix": "3C:28:6E",
+                "timezone": "America/Los_Angeles",
+                "locale": "en_US",
+                "language": "en",
+                "region": "US",
+            }
+        else:
+            # Pick a random device profile
+            base = random.choice(fingerprints).copy()
+
+        # Generate unique identifiers
+        base["android_id"] = secrets.token_hex(8)  # 16 char hex string
+        base["serial"] = self._generate_serial(base.get("brand", ""))
+
+        # Generate unique MAC addresses based on prefix
+        wifi_prefix = base.get("wifi_mac_prefix", "02:00:00")
+        bt_prefix = base.get("bluetooth_mac_prefix", "02:00:01")
+        base["wifi_mac"] = self._generate_mac(wifi_prefix)
+        base["bluetooth_mac"] = self._generate_mac(bt_prefix)
+
+        # Mark as randomly generated
+        base["id"] = f"random-{secrets.token_hex(4)}"
+        base["name"] = f"Random {base.get('name', 'Device')}"
+
+        logger.info(
+            "Generated random fingerprint",
+            device_id=base["id"],
+            model=base.get("model"),
+            brand=base.get("brand"),
+        )
+
+        return base
+
+    def _generate_serial(self, brand: str) -> str:
+        """Generate a realistic serial number based on brand."""
+        brand_lower = brand.lower()
+        if brand_lower in ("samsung",):
+            # Samsung: R5CR30xxxxx format
+            return f"R5CR{secrets.token_hex(5).upper()[:10]}"
+        elif brand_lower in ("google",):
+            # Pixel: 9A2xxxxxxxxxxxxx format
+            return f"9A2{secrets.token_hex(7).upper()}"
+        elif brand_lower in ("oneplus",):
+            # OnePlus: NB2A... format
+            return f"NB2A{secrets.token_hex(6).upper()}"
+        elif brand_lower in ("xiaomi", "redmi"):
+            # Xiaomi: random alphanumeric
+            return secrets.token_hex(8).upper()
+        else:
+            # Generic: uppercase alphanumeric
+            return secrets.token_hex(6).upper()
+
+    def _generate_mac(self, prefix: str) -> str:
+        """Generate a MAC address with the given 3-byte prefix."""
+        # prefix format: "XX:XX:XX"
+        suffix = ":".join(f"{random.randint(0, 255):02X}" for _ in range(3))
+        return f"{prefix}:{suffix}"
+
     def fingerprint_to_env(self, fingerprint: dict[str, Any]) -> dict[str, str]:
-        """Convert fingerprint dict to environment variables for Docker."""
+        """Convert fingerprint dict to environment variables for Docker.
+
+        Converts 25+ fingerprint parameters to Docker environment variables
+        that will be used by inject-fingerprint.sh at container boot.
+        """
         screen = fingerprint.get("screen", {})
+        supported_abis = fingerprint.get("supported_abis", ["arm64-v8a", "armeabi-v7a", "armeabi"])
 
         return {
+            # Device identity
             "DEVICE_MODEL": fingerprint.get("model", ""),
             "DEVICE_BRAND": fingerprint.get("brand", ""),
             "DEVICE_MANUFACTURER": fingerprint.get("manufacturer", ""),
             "DEVICE_PRODUCT": fingerprint.get("product", fingerprint.get("model", "")),
+            "DEVICE_NAME": fingerprint.get("device", fingerprint.get("product", "")),
+            # Build info
             "BUILD_FINGERPRINT": fingerprint.get("build_fingerprint", ""),
-            "ANDROID_ID": fingerprint.get("android_id", ""),
-            "DEVICE_SERIAL": fingerprint.get("serial", ""),
+            "BUILD_ID": fingerprint.get("build_id", ""),
+            "BUILD_DISPLAY": fingerprint.get("build_display", ""),
+            "BUILD_INCREMENTAL": fingerprint.get("build_incremental", ""),
+            "BUILD_TYPE": fingerprint.get("build_type", "user"),
+            "BUILD_TAGS": fingerprint.get("build_tags", "release-keys"),
+            # Android version
+            "SDK_VERSION": fingerprint.get("sdk_version", "34"),
+            "ANDROID_VERSION": fingerprint.get("android_version", "14"),
+            # Hardware
+            "HARDWARE": fingerprint.get("hardware", ""),
+            "BOARD": fingerprint.get("board", ""),
+            "PLATFORM": fingerprint.get("platform", fingerprint.get("board", "")),
+            "BOOTLOADER": fingerprint.get("bootloader", "unknown"),
+            "CPU_ABI": fingerprint.get("cpu_abi", "arm64-v8a"),
+            "SUPPORTED_ABIS": ",".join(supported_abis),
+            # Display
             "DEVICE_WIDTH": str(screen.get("width", 1080)),
             "DEVICE_HEIGHT": str(screen.get("height", 2400)),
             "DEVICE_DPI": str(screen.get("dpi", 420)),
-            "SDK_VERSION": fingerprint.get("sdk_version", "34"),
-            "ANDROID_VERSION": fingerprint.get("android_version", "14"),
-            "HARDWARE": fingerprint.get("hardware", ""),
-            "BOARD": fingerprint.get("board", ""),
+            "REFRESH_RATE": str(screen.get("refresh_rate", 60)),
+            # Graphics (WebGL spoofing)
+            "GL_RENDERER": fingerprint.get("gl_renderer", ""),
+            "GL_VENDOR": fingerprint.get("gl_vendor", ""),
+            # Network MAC prefixes (for generating unique MACs)
+            "WIFI_MAC_PREFIX": fingerprint.get("wifi_mac_prefix", ""),
+            "BLUETOOTH_MAC_PREFIX": fingerprint.get("bluetooth_mac_prefix", ""),
+            # Serial/IDs (generated at runtime if not provided)
+            "ANDROID_ID": fingerprint.get("android_id", ""),
+            "DEVICE_SERIAL": fingerprint.get("serial", ""),
+            # Locale/Region
             "TIMEZONE": fingerprint.get("timezone", "America/New_York"),
             "LOCALE": fingerprint.get("locale", "en_US"),
+            "LANGUAGE": fingerprint.get("language", "en"),
+            "REGION": fingerprint.get("region", "US"),
         }
 
 

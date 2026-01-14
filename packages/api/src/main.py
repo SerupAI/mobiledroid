@@ -18,6 +18,8 @@ from src.routers import (
     snapshots_router,
     chat_router,
     debug_router,
+    settings_router,
+    proxies_router,
 )
 
 # Configure structured logging
@@ -150,6 +152,8 @@ app.include_router(stream_router)
 app.include_router(snapshots_router)
 app.include_router(chat_router)
 app.include_router(debug_router)
+app.include_router(settings_router)
+app.include_router(proxies_router)
 
 
 # Health check endpoint

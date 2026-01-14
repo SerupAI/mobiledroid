@@ -270,9 +270,39 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
     }
   };
 
+  // Handle paste event (Ctrl-V / Cmd-V)
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    if (!isReady || !isConnected || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    e.preventDefault();
+    const text = e.clipboardData.getData('text');
+
+    if (text) {
+      // Show typing indicator
+      setIsTyping(true);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 1000);
+
+      // Send text via WebSocket
+      wsRef.current.send(JSON.stringify({
+        command: 'text',
+        text: text
+      }));
+
+      console.log('Pasted text:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
+    }
+  };
+
   // Handle keyboard input
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isReady || !isConnected || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Let paste event handler deal with Ctrl-V / Cmd-V
+    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+      return; // Will be handled by onPaste event
+    }
 
     // Show typing indicator
     setIsTyping(true);
@@ -401,11 +431,12 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
   };
 
   return (
-    <div 
-      className={`relative outline-none ${isFocused ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-gray-900 rounded-lg' : ''}`} 
+    <div
+      className={`relative outline-none ${isFocused ? 'ring-2 ring-primary-500 ring-offset-2 ring-offset-gray-900 rounded-lg' : ''}`}
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
       onFocus={handleFocus}
       onBlur={handleBlur}
     >
@@ -435,7 +466,7 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
       {/* Focus hint */}
       {!isFocused && isReady && isConnected && (
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 bg-gray-800/90 rounded px-2 py-1 text-xs text-gray-400">
-          Click to focus and type
+          Click to focus, then type or paste (Ctrl/Cmd-V)
         </div>
       )}
 

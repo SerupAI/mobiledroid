@@ -78,6 +78,7 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    chat_session_id: str | None = None  # Link to chat session created during execution
     logs: list[TaskLogResponse] = []
 
     class Config:

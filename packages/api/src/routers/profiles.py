@@ -11,6 +11,7 @@ from src.schemas.profile import (
     ProfileUpdate,
     ProfileResponse,
     ProfileListResponse,
+    ProxyConfig,
 )
 from src.services.profile_service import ProfileService
 from src.services.docker_service import DockerService
@@ -217,3 +218,23 @@ async def check_device_ready(
             detail=f"Profile {profile_id} not found",
         )
     return ready_status
+
+
+@router.patch("/{profile_id}/proxy", response_model=ProfileResponse)
+async def update_profile_proxy(
+    profile_id: str,
+    proxy: ProxyConfig,
+    service: Annotated[ProfileService, Depends(get_profile_service)],
+) -> ProfileResponse:
+    """Update proxy settings for a profile.
+
+    If the profile is running, the new proxy settings are applied immediately.
+    HTTP proxies are natively supported. SOCKS5 proxies require additional setup.
+    """
+    profile = await service.update_proxy(profile_id, proxy.model_dump())
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile {profile_id} not found",
+        )
+    return ProfileResponse.model_validate(profile)

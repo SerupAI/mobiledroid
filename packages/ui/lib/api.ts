@@ -83,6 +83,7 @@ export interface Task {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  chat_session_id: string | null;  // Link to chat session created during execution
 }
 
 export interface TaskCreate {
@@ -158,6 +159,106 @@ export interface ChatHistoryResponse {
   total_sessions: number;
 }
 
+// Proxy types
+export interface Proxy {
+  id: number;
+  protocol: string;
+  host: string;
+  port: number;
+  username: string | null;
+  password: string | null;
+  name: string | null;
+  country: string | null;
+  is_active: boolean;
+  last_used_at: string | null;
+  times_used: number;
+  is_working: boolean | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProxyCreate {
+  protocol?: string;
+  host: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+  name?: string | null;
+  country?: string | null;
+}
+
+export interface ProxyUploadResponse {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
+// Settings types
+export interface LLMProvider {
+  id: string;
+  name: string;
+  display_name: string;
+  base_url: string;
+  has_api_key: boolean;
+  api_key_masked: string | null;
+  active: boolean;
+  description: string | null;
+  max_requests_per_minute: number | null;
+  max_tokens_per_minute: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LLMProviderUpdate {
+  api_key?: string | null;
+  active?: boolean;
+  max_requests_per_minute?: number | null;
+  max_tokens_per_minute?: number | null;
+}
+
+export interface LLMModel {
+  id: string;
+  provider_id: string;
+  name: string;
+  display_name: string;
+  description: string | null;
+  context_window: number | null;
+  max_output_tokens: number | null;
+  input_cost_per_1k: number | null;
+  output_cost_per_1k: number | null;
+  supports_vision: boolean;
+  supports_function_calling: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Integration {
+  id: string;
+  purpose: string;
+  provider_id: string;
+  provider_name: string;
+  model_id: string;
+  model_name: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SettingsStatus {
+  providers: Record<string, {
+    display_name: string;
+    has_api_key: boolean;
+    active: boolean;
+  }>;
+  ready_integrations: string[];
+  missing_integrations: Array<{
+    purpose: string;
+    reason: string;
+  }>;
+  fully_configured: boolean;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -230,6 +331,16 @@ class ApiClient {
   async stopProfile(id: string): Promise<Profile> {
     return this.request(`/profiles/${id}/stop`, {
       method: 'POST',
+    });
+  }
+
+  async updateProfileProxy(
+    id: string,
+    proxy: ProfileProxy
+  ): Promise<Profile> {
+    return this.request(`/profiles/${id}/proxy`, {
+      method: 'PATCH',
+      body: JSON.stringify(proxy),
     });
   }
 
@@ -311,6 +422,22 @@ class ApiClient {
     return this.request(`/devices/${profileId}/home`, {
       method: 'POST',
     });
+  }
+
+  async pasteText(
+    profileId: string,
+    text: string
+  ): Promise<{ success: boolean; message?: string }> {
+    return this.request(`/devices/${profileId}/paste`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  async getClipboard(
+    profileId: string
+  ): Promise<{ success: boolean; data?: { content: string | null } }> {
+    return this.request(`/devices/${profileId}/clipboard`);
   }
 
   // Tasks
@@ -413,6 +540,108 @@ class ApiClient {
   // Health
   async getHealth(): Promise<{ status: string; version: string }> {
     return this.request('/health');
+  }
+
+  // Settings - Providers
+  async getProviders(): Promise<{ providers: LLMProvider[]; total: number }> {
+    return this.request('/settings/providers');
+  }
+
+  async getProvider(providerId: string): Promise<LLMProvider> {
+    return this.request(`/settings/providers/${providerId}`);
+  }
+
+  async updateProvider(
+    providerId: string,
+    data: LLMProviderUpdate
+  ): Promise<LLMProvider> {
+    return this.request(`/settings/providers/${providerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Settings - Models
+  async getModels(providerId?: string): Promise<{ models: LLMModel[]; total: number }> {
+    const params = providerId ? `?provider_id=${providerId}` : '';
+    return this.request(`/settings/models${params}`);
+  }
+
+  async getModel(modelId: string): Promise<LLMModel> {
+    return this.request(`/settings/models/${modelId}`);
+  }
+
+  // Settings - Integrations
+  async getIntegrations(): Promise<{ integrations: Integration[]; total: number }> {
+    return this.request('/settings/integrations');
+  }
+
+  async updateIntegration(
+    integrationId: string,
+    data: { model_id?: string; active?: boolean }
+  ): Promise<Integration> {
+    return this.request(`/settings/integrations/${integrationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Settings - Status
+  async getSettingsStatus(): Promise<SettingsStatus> {
+    return this.request('/settings/status');
+  }
+
+  // Proxies
+  async getProxies(activeOnly: boolean = false): Promise<{ proxies: Proxy[]; total: number }> {
+    const params = activeOnly ? '?active_only=true' : '';
+    return this.request(`/proxies${params}`);
+  }
+
+  async getProxy(proxyId: number): Promise<Proxy> {
+    return this.request(`/proxies/${proxyId}`);
+  }
+
+  async createProxy(data: ProxyCreate): Promise<Proxy> {
+    return this.request('/proxies', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async uploadProxies(file: File): Promise<ProxyUploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${this.baseUrl}/proxies/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || `Upload failed: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async updateProxy(proxyId: number, data: Partial<ProxyCreate & { is_active?: boolean }>): Promise<Proxy> {
+    return this.request(`/proxies/${proxyId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProxy(proxyId: number): Promise<void> {
+    return this.request(`/proxies/${proxyId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async deleteAllProxies(): Promise<{ deleted: number }> {
+    return this.request('/proxies?confirm=true', {
+      method: 'DELETE',
+    });
   }
 }
 

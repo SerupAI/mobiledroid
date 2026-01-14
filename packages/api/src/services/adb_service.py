@@ -350,7 +350,7 @@ class ADBService:
     async def launch_app(self, address: str, package: str) -> bool:
         """Launch an app by package name."""
         device = self._devices.get(address)
-        
+
         # Try to get device directly if not in cache
         if not device:
             try:
@@ -373,3 +373,197 @@ class ADBService:
         except Exception as e:
             logger.error("Launch app error", error=str(e))
             return False
+
+    async def set_proxy(
+        self,
+        address: str,
+        proxy_type: str,
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+    ) -> bool:
+        """Configure HTTP proxy on the device.
+
+        Note: Android natively supports HTTP proxies. SOCKS5 requires additional
+        setup (like redsocks) which is not currently implemented.
+
+        Args:
+            address: ADB device address
+            proxy_type: 'none', 'http', or 'socks5'
+            host: Proxy host
+            port: Proxy port
+            username: Proxy username (optional)
+            password: Proxy password (optional)
+
+        Returns:
+            True if proxy was configured successfully
+        """
+        device = self._devices.get(address)
+
+        # Try to get device directly if not in cache
+        if not device:
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
+
+        loop = asyncio.get_event_loop()
+
+        try:
+            if proxy_type == "none" or not host:
+                # Clear proxy settings
+                await loop.run_in_executor(
+                    None,
+                    lambda: device.shell("settings put global http_proxy :0"),
+                )
+                logger.info("Cleared proxy settings", address=address)
+                return True
+
+            if proxy_type == "socks5":
+                # SOCKS5 not natively supported - would need redsocks
+                logger.warning(
+                    "SOCKS5 proxy not yet implemented",
+                    address=address,
+                    host=host,
+                    port=port,
+                )
+                # For now, we'll skip SOCKS5 but log it
+                return False
+
+            # HTTP proxy
+            proxy_str = f"{host}:{port}"
+
+            # Set global HTTP proxy
+            await loop.run_in_executor(
+                None,
+                lambda: device.shell(f"settings put global http_proxy {proxy_str}"),
+            )
+
+            logger.info(
+                "Set HTTP proxy",
+                address=address,
+                proxy=proxy_str,
+                has_auth=bool(username),
+            )
+            return True
+
+        except Exception as e:
+            logger.error("Set proxy error", error=str(e), address=address)
+            return False
+
+    async def get_proxy(self, address: str) -> dict[str, Any] | None:
+        """Get current proxy settings from the device."""
+        result = await self.shell(address, "settings get global http_proxy")
+        if result:
+            result = result.strip()
+            if result and result != "null" and result != ":0":
+                parts = result.split(":")
+                if len(parts) == 2:
+                    return {
+                        "type": "http",
+                        "host": parts[0],
+                        "port": int(parts[1]) if parts[1].isdigit() else None,
+                    }
+        return {"type": "none", "host": None, "port": None}
+
+    async def clear_proxy(self, address: str) -> bool:
+        """Clear proxy settings on the device."""
+        return await self.set_proxy(address, "none")
+
+    async def set_clipboard(self, address: str, text: str) -> bool:
+        """Set clipboard text on the device.
+
+        Uses ADB broadcast to set clipboard. Requires text to be properly escaped.
+        Falls back to typing the text if broadcast fails.
+        """
+        device = self._devices.get(address)
+
+        if not device:
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return False
+
+        loop = asyncio.get_event_loop()
+
+        try:
+            # Escape the text for shell
+            # Replace problematic characters
+            escaped = text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'")
+            escaped = escaped.replace("$", "\\$").replace("`", "\\`")
+
+            # Try to set clipboard via am broadcast (works with Clipper app if installed)
+            try:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: device.shell(
+                        f'am broadcast -a clipper.set -e text "{escaped}"'
+                    ),
+                )
+                if "Broadcast completed" in result:
+                    logger.info("Set clipboard via broadcast", address=address, length=len(text))
+                    return True
+            except Exception:
+                pass
+
+            # Fallback: Use input text (this types the text, not clipboard)
+            # This is useful when no clipboard app is available
+            logger.debug("Clipboard broadcast not available, using input text", address=address)
+            return await self.input_text(address, text)
+
+        except Exception as e:
+            logger.error("Set clipboard error", error=str(e), address=address)
+            return False
+
+    async def get_clipboard(self, address: str) -> str | None:
+        """Get clipboard text from the device.
+
+        Note: This requires either root access or a clipboard helper app.
+        Returns None if clipboard cannot be read.
+        """
+        device = self._devices.get(address)
+
+        if not device:
+            try:
+                device = adb.device(serial=address)
+                self._devices[address] = device
+            except Exception as e:
+                logger.warning("Device not connected", address=address)
+                return None
+
+        loop = asyncio.get_event_loop()
+
+        try:
+            # Try to get clipboard via am broadcast (works with Clipper app if installed)
+            result = await loop.run_in_executor(
+                None,
+                lambda: device.shell("am broadcast -a clipper.get"),
+            )
+
+            # Parse result for clipboard content
+            # Clipper returns: "Broadcast completed: result=0, data="<text>""
+            if "data=" in result:
+                start = result.find('data="') + 6
+                end = result.rfind('"')
+                if start > 5 and end > start:
+                    return result[start:end]
+
+            logger.debug("Could not read clipboard", address=address)
+            return None
+
+        except Exception as e:
+            logger.error("Get clipboard error", error=str(e), address=address)
+            return None
+
+    async def paste_text(self, address: str, text: str) -> bool:
+        """Paste text by typing it on the device.
+
+        This is the most reliable way to "paste" text when clipboard
+        access is not available.
+        """
+        return await self.input_text(address, text)

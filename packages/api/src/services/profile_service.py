@@ -442,7 +442,74 @@ class ProfileService:
             result["status"] = ProfileStatus.RUNNING.value
             logger.info("Profile transitioned to running", profile_id=profile_id)
 
+            # Apply proxy settings if configured
+            await self._apply_proxy_settings(profile)
+
         # All checks passed
         result["ready"] = True
         result["message"] = "Device ready"
         return result
+
+    async def _apply_proxy_settings(self, profile: Profile) -> bool:
+        """Apply proxy settings to a running profile."""
+        proxy = profile.proxy or {}
+        proxy_type = proxy.get("type", "none")
+
+        if proxy_type == "none":
+            return True  # No proxy to configure
+
+        adb_addr = self._get_adb_address(profile)
+
+        try:
+            success = await self.adb.set_proxy(
+                address=adb_addr,
+                proxy_type=proxy_type,
+                host=proxy.get("host"),
+                port=proxy.get("port"),
+                username=proxy.get("username"),
+                password=proxy.get("password"),
+            )
+
+            if success:
+                logger.info(
+                    "Applied proxy settings",
+                    profile_id=profile.id,
+                    proxy_type=proxy_type,
+                    proxy_host=proxy.get("host"),
+                )
+            else:
+                logger.warning(
+                    "Failed to apply proxy settings",
+                    profile_id=profile.id,
+                    proxy_type=proxy_type,
+                )
+
+            return success
+        except Exception as e:
+            logger.error(
+                "Error applying proxy settings",
+                profile_id=profile.id,
+                error=str(e),
+            )
+            return False
+
+    async def update_proxy(self, profile_id: str, proxy: dict[str, Any]) -> Profile | None:
+        """Update proxy settings for a profile.
+
+        If the profile is running, applies the new proxy settings immediately.
+        """
+        profile = await self.get(profile_id)
+        if not profile:
+            return None
+
+        # Update the stored proxy config
+        profile.proxy = proxy
+        await self.db.flush()
+        await self.db.refresh(profile)
+
+        # If profile is running, apply the new settings
+        if profile.status == ProfileStatus.RUNNING:
+            await self._apply_proxy_settings(profile)
+
+        logger.info("Updated proxy settings", profile_id=profile_id, proxy_type=proxy.get("type"))
+        return profile
