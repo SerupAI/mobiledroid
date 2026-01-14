@@ -53,7 +53,7 @@ jobs:
           echo "UI Image: ghcr.io/${REPO_LOWER}-ui"
 
       - name: Build and push API image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.api
@@ -67,7 +67,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push UI image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.ui
