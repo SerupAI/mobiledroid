@@ -1,0 +1,112 @@
+version: '3.8'
+
+# Production compose file using pre-built images from GitHub Container Registry
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Set VERSION to use a specific release (default: latest)
+# Example: VERSION=v0.1.0 docker compose -f docker-compose.prod.yml up -d
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=mobiledroid
+      - POSTGRES_PASSWORD=mobiledroid
+      - POSTGRES_DB=mobiledroid
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mobiledroid_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mobiledroid"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for task queue
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - mobiledroid_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # API Server (pre-built image)
+  api:
+    image: ghcr.io/serupai/mobiledroid-api:${VERSION:-latest}
+    ports:
+      - "${API_PORT:-8100}:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCKER_NETWORK=mobiledroid_network
+      - REDROID_IMAGE=${REDROID_IMAGE:-redroid/redroid:14.0.0-latest}
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - mobiledroid_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Web UI (pre-built image)
+  ui:
+    image: ghcr.io/serupai/mobiledroid-ui:${VERSION:-latest}
+    ports:
+      - "${UI_PORT:-3100}:3000"
+    environment:
+      - NEXT_PUBLIC_DEBUG=${DEBUG:-false}
+    networks:
+      - mobiledroid_network
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Task Queue Worker (uses same API image)
+  worker:
+    image: ghcr.io/serupai/mobiledroid-api:${VERSION:-latest}
+    command: arq src.worker.WorkerSettings
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+      - REDIS_URL=redis://redis:6379
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCKER_NETWORK=mobiledroid_network
+      - REDROID_IMAGE=${REDROID_IMAGE:-redroid/redroid:14.0.0-latest}
+      - DEBUG=${DEBUG:-false}
+    networks:
+      - mobiledroid_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+networks:
+  mobiledroid_network:
+    name: mobiledroid_network
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
