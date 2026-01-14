@@ -2,6 +2,21 @@
 
 Self-hosted AI-powered Android device automation platform. Control Android emulators via natural language with multi-profile antidetect support.
 
+[![Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/rP5PAjG3jx)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## One-Click Deploy
+
+Deploy MobileDroid to your own cloud infrastructure:
+
+| Platform | Deploy |
+|----------|--------|
+| **AWS** | [![Launch Stack](https://img.shields.io/badge/AWS-Launch_Stack-FF9900?logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation.yaml) |
+| **DigitalOcean** | [![Deploy to DO](https://img.shields.io/badge/DigitalOcean-Create_Droplet-0080FF?logo=digitalocean)](https://cloud.digitalocean.com/droplets/new?image=ubuntu-22-04-x64&size=s-4vcpu-8gb) |
+| **Vultr** | [![Deploy on Vultr](https://img.shields.io/badge/Vultr-Deploy-007BFC?logo=vultr)](https://www.vultr.com/products/cloud-compute/) |
+
+For more regions and detailed instructions, see [deploy/README.md](deploy/README.md).
+
 ## Features
 
 - **AI Agent Control**: Natural language task execution on Android devices
@@ -166,10 +181,16 @@ Each profile can have its own proxy configuration:
 - SOCKS5 proxies
 - Residential proxy support
 
+## Community
+
+- **Discord**: [Join our server](https://discord.gg/rP5PAjG3jx) - Get help, share feedback, connect with other users
+- **Issues**: [GitHub Issues](https://github.com/serup-ai/mobiledroid/issues) - Report bugs or request features
+- **Discussions**: [GitHub Discussions](https://github.com/serup-ai/mobiledroid/discussions) - Ask questions, share ideas
+
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions welcome! Please read CONTRIBUTING.md for guidelines.
+Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  MobileDroid - AI-powered Android automation platform.
+  Deploys a single EC2 instance with Docker running the full MobileDroid stack.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Instance Configuration"
+        Parameters:
+          - InstanceType
+          - KeyName
+      - Label:
+          default: "API Keys"
+        Parameters:
+          - AnthropicApiKey
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - AllowedSSHCidr
+          - AllowedWebCidr
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.xlarge
+    AllowedValues:
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - c5.xlarge
+      - c5.2xlarge
+    Description: >
+      EC2 instance type. Minimum t3.large (2 vCPU, 8GB RAM) recommended.
+      For multiple profiles, use t3.xlarge or larger.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key for the AI agent (required for chat functionality)
+    Default: ""
+
+  AllowedSSHCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed to SSH (port 22). Use your IP for security.
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+
+  AllowedWebCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed to access web UI and API (ports 3100, 8100)
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0c7217cdde317cfec  # Ubuntu 22.04 LTS
+    us-east-2:
+      AMI: ami-05fb0b8c1424f266b
+    us-west-1:
+      AMI: ami-0ce2cb35386fc22e9
+    us-west-2:
+      AMI: ami-008fe2fc65df48dac
+    eu-west-1:
+      AMI: ami-0905a3c97561e0b69
+    eu-west-2:
+      AMI: ami-0e5f882be1900e43b
+    eu-central-1:
+      AMI: ami-0faab6bdbac9486fb
+    ap-southeast-1:
+      AMI: ami-078c1149d8ad719a7
+    ap-southeast-2:
+      AMI: ami-04f5097681773b989
+    ap-northeast-1:
+      AMI: ami-07c589821f2b353aa
+
+Resources:
+  MobileDroidSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MobileDroid
+      GroupName: !Sub '${AWS::StackName}-sg'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSHCidr
+          Description: SSH access
+        - IpProtocol: tcp
+          FromPort: 3100
+          ToPort: 3100
+          CidrIp: !Ref AllowedWebCidr
+          Description: Web UI
+        - IpProtocol: tcp
+          FromPort: 8100
+          ToPort: 8100
+          CidrIp: !Ref AllowedWebCidr
+          Description: API server
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-sg'
+
+  MobileDroidInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref MobileDroidSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}'
+        - Key: Application
+          Value: MobileDroid
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # Log output
+          exec > >(tee /var/log/mobiledroid-install.log) 2>&1
+          echo "Starting MobileDroid installation..."
+
+          # Update system
+          apt-get update
+          apt-get upgrade -y
+
+          # Install Docker
+          curl -fsSL https://get.docker.com | sh
+          usermod -aG docker ubuntu
+
+          # Install Docker Compose
+          apt-get install -y docker-compose-plugin
+
+          # Load kernel modules for Redroid (Android containers)
+          modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
+          modprobe ashmem_linux || true
+
+          # Make modules load on boot
+          echo "binder_linux" >> /etc/modules
+          echo "ashmem_linux" >> /etc/modules
+
+          # Clone MobileDroid
+          git clone https://github.com/serup-ai/mobiledroid.git /opt/mobiledroid
+          cd /opt/mobiledroid
+
+          # Create .env file
+          cat > .env << 'ENVEOF'
+          ANTHROPIC_API_KEY=${AnthropicApiKey}
+          DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+          REDIS_URL=redis://redis:6379
+          API_HOST=0.0.0.0
+          API_PORT=8100
+          DOCKER_NETWORK=mobiledroid_network
+          ENVEOF
+
+          # Start services
+          cd docker
+          docker compose up -d
+
+          echo "MobileDroid installation complete!"
+          echo "UI: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):3100"
+          echo "API: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8100"
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref MobileDroidInstance
+
+  PublicIP:
+    Description: Public IP address
+    Value: !GetAtt MobileDroidInstance.PublicIp
+
+  WebUIUrl:
+    Description: MobileDroid Web UI URL
+    Value: !Sub 'http://${MobileDroidInstance.PublicIp}:3100'
+
+  APIUrl:
+    Description: MobileDroid API URL
+    Value: !Sub 'http://${MobileDroidInstance.PublicIp}:8100'
+
+  APIDocsUrl:
+    Description: API Documentation (Swagger)
+    Value: !Sub 'http://${MobileDroidInstance.PublicIp}:8100/docs'
+
+  SSHCommand:
+    Description: SSH command to connect
+    Value: !Sub 'ssh -i ${KeyName}.pem ubuntu@${MobileDroidInstance.PublicIp}'
