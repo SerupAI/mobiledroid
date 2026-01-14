@@ -29,6 +29,15 @@ Launch MobileDroid on AWS EC2 with one click:
 
 **Estimated cost**: ~$50-150/month depending on instance type
 
+### AWS GPU (Better Performance)
+
+For graphics-intensive automation, use GPU-accelerated instances:
+
+| Instance | GPU | Cost | Launch |
+|----------|-----|------|--------|
+| g4dn.xlarge | NVIDIA T4 | ~$0.53/hr | [![Launch GPU Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid-gpu&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-gpu.yaml) |
+| g6.xlarge | NVIDIA L4 | ~$0.80/hr | [![Launch GPU Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid-gpu&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-gpu.yaml) |
+
 ---
 
 ## DigitalOcean
@@ -74,6 +83,41 @@ Launch MobileDroid on AWS EC2 with one click:
    ```
 
 **Estimated cost**: ~$24-48/month
+
+---
+
+## GPU Cloud (Best Value)
+
+For the best price-to-performance GPU hosting, use specialized GPU clouds:
+
+### RunPod
+
+[![Deploy on RunPod](https://img.shields.io/badge/RunPod-Deploy_GPU-673AB7?style=for-the-badge&logo=runpod)](https://runpod.io?ref=h9kmgkc7)
+
+- **RTX 3090**: $0.22-0.43/hr (vs AWS $0.53/hr)
+- **RTX 4090**: $0.34-0.69/hr
+- Per-second billing, no hourly minimums
+
+[Full RunPod Setup Guide](runpod/README.md)
+
+### Vast.ai
+
+[![Deploy on Vast.ai](https://img.shields.io/badge/Vast.ai-Deploy_GPU-00D4AA?style=for-the-badge)](https://cloud.vast.ai/?ref_id=386631)
+
+- **RTX 3090**: ~$0.20/hr (cheapest option)
+- **RTX 4090**: ~$0.34/hr
+- P2P marketplace with lowest prices
+
+[Full Vast.ai Setup Guide](vastai/README.md)
+
+### GPU Cost Comparison
+
+| Provider | GPU | Hourly | Monthly (24/7) |
+|----------|-----|--------|----------------|
+| Vast.ai | RTX 3090 | ~$0.20 | ~$146 |
+| RunPod | RTX 3090 | ~$0.22 | ~$160 |
+| AWS | T4 (g4dn) | $0.53 | ~$386 |
+| AWS | L4 (g6) | $0.80 | ~$584 |
 
 ---
 
@@ -160,7 +204,36 @@ docker compose logs api
 docker compose logs ui
 ```
 
-### Need help?
+---
 
-- [Discord Community](https://discord.gg/rP5PAjG3jx)
-- [GitHub Issues](https://github.com/serup-ai/mobiledroid/issues)
+## Local Development Setup
+
+Running MobileDroid locally? See platform-specific guides:
+
+| Platform | Guide | Notes |
+|----------|-------|-------|
+| **Linux** | [Setup Guide](../docs/setup/linux.md) | Recommended - native support |
+| **Windows (WSL2)** | [Setup Guide](../docs/setup/windows-wsl.md) | Requires custom kernel |
+| **macOS** | [Setup Guide](../docs/setup/macos.md) | Limited - use cloud instead |
+
+---
+
+## Need Help?
+
+### Community Support (Free)
+
+- [Discord Community](https://discord.gg/rP5PAjG3jx) - Get help, share feedback
+- [GitHub Issues](https://github.com/serup-ai/mobiledroid/issues) - Report bugs
+- [GitHub Discussions](https://github.com/serup-ai/mobiledroid/discussions) - Ask questions
+
+### Professional Services
+
+Need help with deployment, customization, or enterprise integration?
+
+**Consulting available** for:
+- Custom deployment and architecture
+- AWS/cloud infrastructure setup
+- Enterprise integration and scaling
+- Training and onboarding
+
+[Contact us on Discord](https://discord.gg/rP5PAjG3jx) or reach out directly to discuss your requirements.
