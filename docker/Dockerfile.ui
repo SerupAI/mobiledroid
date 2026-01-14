@@ -1,5 +1,5 @@
 # MobileDroid UI Dockerfile
-FROM node:20-alpine AS base
+FROM node:25-alpine AS base
 
 # Dependencies stage
 FROM base AS deps
