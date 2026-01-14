@@ -69,7 +69,7 @@ For graphics-intensive automation, use GPU-accelerated instances:
 
 1. Create an Ubuntu 22.04 Cloud Compute instance (minimum: 2 vCPU, 4GB RAM)
 
-   [![Deploy on Vultr](https://img.shields.io/badge/Vultr-Deploy_Instance-007BFC?style=for-the-badge&logo=vultr)](https://www.vultr.com/products/cloud-compute/?ref=YOUR_VULTR_REF)
+   [![Deploy on Vultr](https://img.shields.io/badge/Vultr-Deploy_Instance-007BFC?style=for-the-badge&logo=vultr)](https://www.vultr.com/?ref=9853720)
 
 2. SSH into your instance and run:
    ```bash

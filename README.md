@@ -13,7 +13,7 @@ Deploy MobileDroid to your own cloud infrastructure:
 |----------|--------|
 | **AWS** | [![Launch Stack](https://img.shields.io/badge/AWS-Launch_Stack-FF9900?logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation.yaml) |
 | **DigitalOcean** | [![Deploy to DO](https://img.shields.io/badge/DigitalOcean-Create_Droplet-0080FF?logo=digitalocean)](https://cloud.digitalocean.com/droplets/new?image=ubuntu-22-04-x64&size=s-4vcpu-8gb) |
-| **Vultr** | [![Deploy on Vultr](https://img.shields.io/badge/Vultr-Deploy-007BFC?logo=vultr)](https://www.vultr.com/products/cloud-compute/) |
+| **Vultr** | [![Deploy on Vultr](https://img.shields.io/badge/Vultr-Deploy-007BFC?logo=vultr)](https://www.vultr.com/?ref=9853720) |
 
 For more regions and detailed instructions, see [deploy/README.md](deploy/README.md).
 
