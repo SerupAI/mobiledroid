@@ -46,7 +46,7 @@ For graphics-intensive automation, use GPU-accelerated instances:
 
 1. Create an Ubuntu 22.04 Droplet (minimum: s-2vcpu-4gb)
 
-   [![Create Droplet](https://img.shields.io/badge/DigitalOcean-Create_Droplet-0080FF?style=for-the-badge&logo=digitalocean)](https://cloud.digitalocean.com/droplets/new?image=ubuntu-22-04-x64&size=s-4vcpu-8gb&region=nyc1&refcode=YOUR_DO_REFERRAL)
+   [![Create Droplet](https://img.shields.io/badge/DigitalOcean-Create_Droplet-0080FF?style=for-the-badge&logo=digitalocean)](https://m.do.co/c/c14767268755)
 
 2. SSH into your droplet and run:
    ```bash
