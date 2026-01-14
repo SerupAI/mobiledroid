@@ -2,7 +2,7 @@
 
 Self-hosted AI-powered Android device automation platform. Control Android emulators via natural language with multi-profile antidetect support.
 
-[![Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/rP5PAjG3jx)
+[![Discord](https://img.shields.io/badge/Discord-Join_Server-7289da?logo=discord&logoColor=white)](https://discord.gg/rP5PAjG3jx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## One-Click Deploy
