@@ -82,8 +82,8 @@ sudo tailscale status
 # Verify current public IP (should be home IP)
 curl ifconfig.me
 
-# Change/set exit node
-sudo tailscale up --exit-node=desktop-tp59f6k --accept-routes
+# Change/set exit node (--exit-node-allow-lan-access is required for Tailscale peers to access services)
+sudo tailscale up --exit-node=desktop-tp59f6k --accept-routes --exit-node-allow-lan-access
 
 # Disable exit node (revert to EC2's own IP)
 sudo tailscale up --exit-node=
