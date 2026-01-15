@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  MobileDroid ARM (Graviton) - AI-powered Android automation platform.
+  Runs on ARM architecture for native Android execution without emulation artifacts.
+  Better detection evasion and lower cost than x86 instances.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Instance Configuration"
+        Parameters:
+          - InstanceType
+          - KeyName
+      - Label:
+          default: "API Keys"
+        Parameters:
+          - AnthropicApiKey
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - AllowedSSHCidr
+          - AllowedWebCidr
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t4g.xlarge
+    AllowedValues:
+      - t4g.large      # 2 vCPU, 8GB  - $0.0672/hr (~60% cheaper than t3)
+      - t4g.xlarge     # 4 vCPU, 16GB - $0.1344/hr (recommended)
+      - t4g.2xlarge    # 8 vCPU, 32GB - $0.2688/hr
+      - m6g.large      # 2 vCPU, 8GB  - $0.077/hr
+      - m6g.xlarge     # 4 vCPU, 16GB - $0.154/hr
+      - m6g.2xlarge    # 8 vCPU, 32GB - $0.308/hr
+      - c6g.xlarge     # 4 vCPU, 8GB  - $0.136/hr (compute optimized)
+      - c6g.2xlarge    # 8 vCPU, 16GB - $0.272/hr
+    Description: >
+      ARM Graviton instance type. t4g.xlarge recommended for best value.
+      ARM instances run Android natively without emulation artifacts.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key for the AI agent (required for chat functionality)
+    Default: ""
+
+  AllowedSSHCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed to SSH (port 22). Use your IP for security.
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+
+  AllowedWebCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed to access web UI and API (ports 3100, 8100)
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+
+# ARM64 Ubuntu 22.04 AMIs (different from x86)
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0a0c8eebcdd6dcbd0  # Ubuntu 22.04 LTS ARM64
+    us-east-2:
+      AMI: ami-0d0f4db8d7d3d8c32
+    us-west-1:
+      AMI: ami-014d05e6b24240371
+    us-west-2:
+      AMI: ami-0c79a55dda52f7b7e
+    eu-west-1:
+      AMI: ami-01dd271720c1ba44f
+    eu-west-2:
+      AMI: ami-0eb260c4d5475b901
+    eu-central-1:
+      AMI: ami-0d3f551818b21ed81
+    ap-southeast-1:
+      AMI: ami-0df7a207adb9748c7
+    ap-southeast-2:
+      AMI: ami-0310483fb2b488153
+    ap-northeast-1:
+      AMI: ami-0d52744d6551d851e
+
+Resources:
+  MobileDroidSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MobileDroid ARM
+      GroupName: !Sub '${AWS::StackName}-sg'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSHCidr
+          Description: SSH access
+        - IpProtocol: tcp
+          FromPort: 3100
+          ToPort: 3100
+          CidrIp: !Ref AllowedWebCidr
+          Description: Web UI
+        - IpProtocol: tcp
+          FromPort: 8100
+          ToPort: 8100
+          CidrIp: !Ref AllowedWebCidr
+          Description: API server
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-sg'
+
+  MobileDroidInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref MobileDroidSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 50
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}'
+        - Key: Application
+          Value: MobileDroid
+        - Key: Architecture
+          Value: ARM64-Graviton
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # Log output
+          exec > >(tee /var/log/mobiledroid-install.log) 2>&1
+          echo "Starting MobileDroid ARM installation..."
+          echo "Architecture: $(uname -m)"
+
+          # Update system
+          apt-get update
+          apt-get upgrade -y
+
+          # Install Docker
+          curl -fsSL https://get.docker.com | sh
+          usermod -aG docker ubuntu
+
+          # Install Docker Compose
+          apt-get install -y docker-compose-plugin
+
+          # Load kernel modules for Redroid (Android containers)
+          modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
+          modprobe ashmem_linux || true
+
+          # Make modules load on boot
+          echo "binder_linux" >> /etc/modules
+          echo "ashmem_linux" >> /etc/modules
+
+          # Clone MobileDroid
+          git clone https://github.com/serup-ai/mobiledroid.git /opt/mobiledroid
+          cd /opt/mobiledroid
+
+          # Create .env file with ARM-specific settings
+          cat > .env << 'ENVEOF'
+          ANTHROPIC_API_KEY=${AnthropicApiKey}
+          DATABASE_URL=postgresql+asyncpg://mobiledroid:mobiledroid@db:5432/mobiledroid
+          REDIS_URL=redis://redis:6379
+          API_HOST=0.0.0.0
+          API_PORT=8100
+          DOCKER_NETWORK=mobiledroid_network
+          # ARM64 Redroid image - native Android, no emulation!
+          REDROID_IMAGE=redroid/redroid:14.0.0-arm64
+          ENVEOF
+
+          # Start services
+          cd docker
+          docker compose up -d
+
+          echo "=========================================="
+          echo "MobileDroid ARM installation complete!"
+          echo "Architecture: ARM64 (Graviton)"
+          echo "Android runs NATIVELY - no emulation!"
+          echo "=========================================="
+          echo "UI: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):3100"
+          echo "API: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8100"
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref MobileDroidInstance
+
+  PublicIP:
+    Description: Public IP address
+    Value: !GetAtt MobileDroidInstance.PublicIp
+
+  Architecture:
+    Description: Instance architecture
+    Value: ARM64 (Graviton) - Native Android execution
+
+  WebUIUrl:
+    Description: MobileDroid Web UI URL
+    Value: !Sub 'http://${MobileDroidInstance.PublicIp}:3100'
+
+  APIUrl:
+    Description: MobileDroid API URL
+    Value: !Sub 'http://${MobileDroidInstance.PublicIp}:8100'
+
+  APIDocsUrl:
+    Description: API Documentation (Swagger)
+    Value: !Sub 'http://${MobileDroidInstance.PublicIp}:8100/docs'
+
+  SSHCommand:
+    Description: SSH command to connect
+    Value: !Sub 'ssh -i ${KeyName}.pem ubuntu@${MobileDroidInstance.PublicIp}'
+
+  CostSavings:
+    Description: Estimated cost savings vs x86
+    Value: "ARM Graviton instances are ~20-40% cheaper than equivalent x86 instances"

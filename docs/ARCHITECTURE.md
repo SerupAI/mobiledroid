@@ -297,7 +297,9 @@ One-click deployment via AWS Marketplace AMI:
 
 ---
 
-## Network Architecture (Tailscale Exit Node)
+## Network Architecture (Tailscale Exit Node) - Enterprise
+
+> **Note:** Tailscale integration is an enterprise feature for residential IP routing.
 
 For residential IP routing:
 

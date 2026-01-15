@@ -18,6 +18,38 @@ MobileDroid requires:
 
 ## AWS (CloudFormation)
 
+### ARM vs x86 - Which to Choose?
+
+| Architecture | Best For | Detection Risk | Cost |
+|--------------|----------|----------------|------|
+| **ARM (Graviton)** | Social media, automation | **Lowest** (native Android) | ~$0.13/hr |
+| **x86** | General use, compatibility | Medium (emulation artifacts) | ~$0.17/hr |
+| **x86 + GPU** | Graphics-heavy apps, games | Medium | ~$0.53/hr |
+
+**Recommendation:** Use ARM for Instagram, Threads, TikTok - native execution means no emulation detection.
+
+---
+
+### ARM Instances (Recommended for Detection Evasion)
+
+Launch MobileDroid on ARM Graviton - Android runs **natively** without emulation:
+
+| Region | Launch |
+|--------|--------|
+| US East (N. Virginia) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+| US East (Ohio) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-2#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+| US West (Oregon) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+| EU (Ireland) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+| EU (Frankfurt) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-central-1#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+| Asia Pacific (Singapore) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=ap-southeast-1#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+| Asia Pacific (Tokyo) | [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-1#/stacks/new?stackName=mobiledroid-arm&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-arm.yaml) |
+
+**Estimated cost**: ~$95-120/month (20-40% cheaper than x86)
+
+---
+
+### x86 Instances (Standard)
+
 Launch MobileDroid on AWS EC2 with one click:
 
 | Region | Launch |
