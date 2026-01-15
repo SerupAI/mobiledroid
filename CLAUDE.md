@@ -56,7 +56,54 @@ ssh -i infra/aws/mobiledroid-key.pem ubuntu@34.235.77.142 \
 ### SSH Access
 
 ```bash
+# Via Tailscale IP (preferred - works when exit node is active)
+ssh -i infra/aws/mobiledroid-key.pem ubuntu@100.122.30.80
+
+# Via public IP (may not work when exit node routes all traffic)
 ssh -i infra/aws/mobiledroid-key.pem ubuntu@34.235.77.142
+```
+
+## Tailscale Exit Node (Residential IP)
+
+EC2 is configured to route traffic through your home network via Tailscale for residential IP appearance.
+
+### Current Setup
+| Item | Value |
+|------|-------|
+| EC2 Tailscale IP | `100.122.30.80` |
+| Exit Node | `desktop-tp59f6k` (Windows desktop) |
+| Home/Residential IP | `76.49.30.63` |
+
+### Tailscale Commands on EC2
+```bash
+# Check status
+sudo tailscale status
+
+# Verify current public IP (should be home IP)
+curl ifconfig.me
+
+# Change/set exit node
+sudo tailscale up --exit-node=desktop-tp59f6k --accept-routes
+
+# Disable exit node (revert to EC2's own IP)
+sudo tailscale up --exit-node=
+```
+
+### If Exit Node Goes Offline
+If Windows desktop goes offline, EC2 loses internet. Options:
+1. Set up another exit node (e.g., Raspberry Pi at home)
+2. Temporarily disable exit node: `sudo tailscale up --exit-node=`
+
+### Connector API
+```bash
+# List all connectors
+curl http://100.122.30.80:8100/connectors
+
+# Check Tailscale connector status
+curl http://100.122.30.80:8100/connectors/tailscale/status
+
+# Get current public IP via API
+curl http://100.122.30.80:8100/connectors/tailscale/ip
 ```
 
 ## Local Development
