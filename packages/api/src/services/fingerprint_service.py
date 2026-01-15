@@ -3,6 +3,8 @@
 import json
 import random
 import secrets
+import time
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -140,6 +142,16 @@ class FingerprintService:
         base["wifi_mac"] = self._generate_mac(wifi_prefix)
         base["bluetooth_mac"] = self._generate_mac(bt_prefix)
 
+        # P1 Fingerprinting: Google Service IDs
+        base["gsf_id"] = self._generate_gsf_id()  # Google Services Framework ID
+        base["gaid"] = self._generate_gaid()  # Google Advertising ID
+
+        # P1 Fingerprinting: System uptime (realistic boot time)
+        # Set boot time to 1-7 days ago for realism
+        days_ago = random.randint(1, 7)
+        hours_ago = random.randint(0, 23)
+        base["boot_time"] = int(time.time()) - (days_ago * 86400) - (hours_ago * 3600)
+
         # Mark as randomly generated
         base["id"] = f"random-{secrets.token_hex(4)}"
         base["name"] = f"Random {base.get('name', 'Device')}"
@@ -177,6 +189,23 @@ class FingerprintService:
         # prefix format: "XX:XX:XX"
         suffix = ":".join(f"{random.randint(0, 255):02X}" for _ in range(3))
         return f"{prefix}:{suffix}"
+
+    def _generate_gsf_id(self) -> str:
+        """Generate a Google Services Framework ID.
+
+        GSF ID is a 64-bit signed integer stored as decimal string.
+        Format: 16-19 digit decimal number (can be negative).
+        """
+        # Generate a random 64-bit signed integer
+        gsf_int = random.randint(-(2**63), (2**63) - 1)
+        return str(gsf_int)
+
+    def _generate_gaid(self) -> str:
+        """Generate a Google Advertising ID (GAID).
+
+        GAID is a standard UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+        """
+        return str(uuid.uuid4())
 
     def fingerprint_to_env(self, fingerprint: dict[str, Any]) -> dict[str, str]:
         """Convert fingerprint dict to environment variables for Docker.
@@ -230,6 +259,11 @@ class FingerprintService:
             "LOCALE": fingerprint.get("locale", "en_US"),
             "LANGUAGE": fingerprint.get("language", "en"),
             "REGION": fingerprint.get("region", "US"),
+            # P1: Google Service IDs
+            "GSF_ID": fingerprint.get("gsf_id", ""),
+            "GAID": fingerprint.get("gaid", ""),
+            # P1: System uptime spoofing
+            "BOOT_TIME": str(fingerprint.get("boot_time", "")),
         }
 
 

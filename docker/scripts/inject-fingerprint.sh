@@ -243,7 +243,32 @@ inject_fingerprint() {
     set_prop "gsm.version.baseband" "1.0"
     set_prop "gsm.version.ril-impl" "android samsung-ril 1.0"
 
-    log_info "Fingerprint injection completed (25+ parameters set)"
+    # ==========================================
+    # P1: GOOGLE SERVICE IDS (2 properties)
+    # ==========================================
+    # GSF ID (Google Services Framework) - Required for Play Store apps
+    if [ -n "$GSF_ID" ]; then
+        set_prop "ro.gsf.id" "$GSF_ID"
+        log_info "Set GSF ID"
+    fi
+
+    # GAID (Google Advertising ID) - Used by ad SDKs
+    if [ -n "$GAID" ]; then
+        set_prop "persist.google.advertising_id" "$GAID"
+        log_info "Set GAID: $GAID"
+    fi
+
+    # ==========================================
+    # P1: SYSTEM UPTIME SPOOFING (2 properties)
+    # ==========================================
+    # Spoof boot time to avoid "just booted" detection
+    if [ -n "$BOOT_TIME" ]; then
+        set_prop "ro.runtime.firstboot" "$BOOT_TIME"
+        set_prop "persist.sys.boot_time" "$BOOT_TIME"
+        log_info "Set boot time: $BOOT_TIME ($(date -d @$BOOT_TIME 2>/dev/null || echo 'N/A'))"
+    fi
+
+    log_info "Fingerprint injection completed (30+ parameters set)"
 }
 
 # Execute injection
