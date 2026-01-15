@@ -41,6 +41,7 @@ class ProfileService:
             name=data.name,
             fingerprint=data.fingerprint.model_dump(),
             proxy=data.proxy.model_dump(),
+            proxy_connector_id=data.proxy_connector_id,
             status=ProfileStatus.STOPPED,
         )
 
@@ -100,6 +101,9 @@ class ProfileService:
             profile.fingerprint = data.fingerprint.model_dump()
         if data.proxy is not None:
             profile.proxy = data.proxy.model_dump()
+        if data.proxy_connector_id is not None:
+            # Allow clearing by setting to empty string
+            profile.proxy_connector_id = data.proxy_connector_id if data.proxy_connector_id else None
 
         await self.db.flush()
         await self.db.refresh(profile)
@@ -451,9 +455,52 @@ class ProfileService:
         return result
 
     async def _apply_proxy_settings(self, profile: Profile) -> bool:
-        """Apply proxy settings to a running profile."""
-        proxy = profile.proxy or {}
-        proxy_type = proxy.get("type", "none")
+        """Apply proxy settings to a running profile.
+
+        Checks proxy_connector_id first, then falls back to manual proxy config.
+        """
+        proxy_type = "none"
+        host = None
+        port = None
+        username = None
+        password = None
+
+        # Check for connector-based proxy first
+        if profile.proxy_connector_id:
+            try:
+                from src.connectors import connector_registry
+                from src.connectors.base import ProxyConnector
+
+                connector = connector_registry.get(profile.proxy_connector_id)
+                if connector and isinstance(connector, ProxyConnector) and connector.is_enabled:
+                    proxy_config = await connector.get_proxy_config()
+                    if proxy_config:
+                        proxy_type = proxy_config.type
+                        host = proxy_config.host
+                        port = proxy_config.port
+                        username = proxy_config.username
+                        password = proxy_config.password
+                        logger.info(
+                            "Using connector proxy",
+                            profile_id=profile.id,
+                            connector_id=profile.proxy_connector_id,
+                        )
+            except Exception as e:
+                logger.warning(
+                    "Failed to get proxy from connector",
+                    profile_id=profile.id,
+                    connector_id=profile.proxy_connector_id,
+                    error=str(e),
+                )
+
+        # Fall back to manual proxy config if no connector proxy
+        if proxy_type == "none":
+            proxy = profile.proxy or {}
+            proxy_type = proxy.get("type", "none")
+            host = proxy.get("host")
+            port = proxy.get("port")
+            username = proxy.get("username")
+            password = proxy.get("password")
 
         if proxy_type == "none":
             return True  # No proxy to configure
@@ -464,10 +511,10 @@ class ProfileService:
             success = await self.adb.set_proxy(
                 address=adb_addr,
                 proxy_type=proxy_type,
-                host=proxy.get("host"),
-                port=proxy.get("port"),
-                username=proxy.get("username"),
-                password=proxy.get("password"),
+                host=host,
+                port=port,
+                username=username,
+                password=password,
             )
 
             if success:
@@ -475,7 +522,7 @@ class ProfileService:
                     "Applied proxy settings",
                     profile_id=profile.id,
                     proxy_type=proxy_type,
-                    proxy_host=proxy.get("host"),
+                    proxy_host=host,
                 )
             else:
                 logger.warning(

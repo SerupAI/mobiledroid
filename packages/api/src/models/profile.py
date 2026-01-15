@@ -65,6 +65,10 @@ class Profile(Base, TimestampMixin):
         default=dict,
     )
 
+    # Proxy connector ID (e.g., "tailscale", "brightdata")
+    # If set, overrides the manual proxy config above
+    proxy_connector_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # Last activity tracking
     last_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_stopped_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

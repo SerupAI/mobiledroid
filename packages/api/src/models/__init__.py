@@ -9,6 +9,7 @@ from src.models.llm_model import LLMModel
 from src.models.integration import Integration
 from src.models.chat import ChatSession, ChatMessage, ChatMessageRole
 from src.models.proxy import Proxy
+from src.models.connector import ServiceConnector, ConnectorType
 
 __all__ = [
     "Base",
@@ -23,4 +24,6 @@ __all__ = [
     "ChatMessage",
     "ChatMessageRole",
     "Proxy",
+    "ServiceConnector",
+    "ConnectorType",
 ]

@@ -64,6 +64,10 @@ class ProfileCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     fingerprint: DeviceFingerprint
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
+    proxy_connector_id: str | None = Field(
+        default=None,
+        description="Service connector ID for proxy (e.g., 'tailscale'). Overrides manual proxy config."
+    )
 
 
 class ProfileUpdate(BaseModel):
@@ -72,6 +76,10 @@ class ProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     fingerprint: DeviceFingerprint | None = None
     proxy: ProxyConfig | None = None
+    proxy_connector_id: str | None = Field(
+        default=None,
+        description="Service connector ID for proxy (e.g., 'tailscale'). Set to empty string to clear."
+    )
 
 
 class ProfileResponse(BaseModel):
@@ -84,6 +92,7 @@ class ProfileResponse(BaseModel):
     adb_port: int | None
     fingerprint: dict
     proxy: dict
+    proxy_connector_id: str | None = None
     created_at: datetime
     updated_at: datetime
     last_started_at: datetime | None

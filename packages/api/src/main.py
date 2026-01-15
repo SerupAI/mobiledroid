@@ -20,6 +20,7 @@ from src.routers import (
     debug_router,
     settings_router,
     proxies_router,
+    connectors_router,
 )
 
 # Configure structured logging
@@ -88,6 +89,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Failed to seed initial data", error=str(e))
 
+    # Initialize service connectors
+    try:
+        from src.db.session import AsyncSessionLocal
+        from src.services.connector_service import ConnectorService
+
+        async with AsyncSessionLocal() as db:
+            connector_service = ConnectorService(db)
+            await connector_service.initialize_connectors()
+
+        logger.info("Service connectors initialized")
+    except Exception as e:
+        logger.warning("Failed to initialize connectors", error=str(e))
+
     yield
 
     # Shutdown
@@ -154,6 +168,7 @@ app.include_router(chat_router)
 app.include_router(debug_router)
 app.include_router(settings_router)
 app.include_router(proxies_router)
+app.include_router(connectors_router)
 
 
 # Health check endpoint
