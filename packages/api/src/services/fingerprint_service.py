@@ -152,6 +152,9 @@ class FingerprintService:
         hours_ago = random.randint(0, 23)
         base["boot_time"] = int(time.time()) - (days_ago * 86400) - (hours_ago * 3600)
 
+        # P1 Fingerprinting: Browser-level (WebGL/Canvas)
+        base["browser_fingerprint"] = self._generate_browser_fingerprint(base)
+
         # Mark as randomly generated
         base["id"] = f"random-{secrets.token_hex(4)}"
         base["name"] = f"Random {base.get('name', 'Device')}"
@@ -206,6 +209,70 @@ class FingerprintService:
         GAID is a standard UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
         """
         return str(uuid.uuid4())
+
+    def _generate_browser_fingerprint(self, device: dict[str, Any]) -> dict[str, Any]:
+        """Generate browser-level fingerprint parameters for WebGL/Canvas protection.
+
+        These parameters are used by the browser extension to spoof
+        browser-based fingerprinting techniques.
+        """
+        # Mobile GPU renderers by vendor
+        gpu_profiles = {
+            "Qualcomm": {
+                "vendor": "Qualcomm",
+                "renderers": [
+                    "Adreno (TM) 730",
+                    "Adreno (TM) 660",
+                    "Adreno (TM) 650",
+                    "Adreno (TM) 640",
+                    "Adreno (TM) 620",
+                ],
+            },
+            "ARM": {
+                "vendor": "ARM",
+                "renderers": [
+                    "Mali-G710 MC10",
+                    "Mali-G715 Immortalis MC10",
+                    "Mali-G78 MP24",
+                    "Mali-G77 MC9",
+                    "Mali-G76 MC4",
+                ],
+            },
+            "Imagination Technologies": {
+                "vendor": "Imagination Technologies",
+                "renderers": [
+                    "PowerVR Rogue GE8320",
+                ],
+            },
+        }
+
+        # Select GPU based on device's gl_vendor or random
+        gl_vendor = device.get("gl_vendor", "")
+        if gl_vendor in gpu_profiles:
+            profile = gpu_profiles[gl_vendor]
+        else:
+            # Pick random vendor
+            profile = random.choice(list(gpu_profiles.values()))
+
+        webgl_renderer = random.choice(profile["renderers"])
+
+        return {
+            "webgl": {
+                "vendor": profile["vendor"],
+                "renderer": webgl_renderer,
+            },
+            "canvas": {
+                "noise_level": round(random.uniform(1.5, 2.5), 2),
+            },
+            "audio": {
+                "sample_rate": random.choice([44100, 48000]),
+                "noise_level": 0.0001,
+            },
+            "webrtc": {
+                "enabled": True,
+                "block_local_ips": True,
+            },
+        }
 
     def fingerprint_to_env(self, fingerprint: dict[str, Any]) -> dict[str, str]:
         """Convert fingerprint dict to environment variables for Docker.
@@ -264,6 +331,24 @@ class FingerprintService:
             "GAID": fingerprint.get("gaid", ""),
             # P1: System uptime spoofing
             "BOOT_TIME": str(fingerprint.get("boot_time", "")),
+            # P1: Browser fingerprint (WebGL/Canvas)
+            **self._browser_fingerprint_to_env(fingerprint.get("browser_fingerprint", {})),
+        }
+
+    def _browser_fingerprint_to_env(self, browser_fp: dict[str, Any]) -> dict[str, str]:
+        """Convert browser fingerprint to environment variables."""
+        webgl = browser_fp.get("webgl", {})
+        canvas = browser_fp.get("canvas", {})
+        audio = browser_fp.get("audio", {})
+
+        return {
+            # WebGL spoofing
+            "WEBGL_VENDOR": webgl.get("vendor", "Qualcomm"),
+            "WEBGL_RENDERER": webgl.get("renderer", "Adreno (TM) 730"),
+            # Canvas noise
+            "CANVAS_NOISE_LEVEL": str(canvas.get("noise_level", 2)),
+            # Audio fingerprint
+            "AUDIO_SAMPLE_RATE": str(audio.get("sample_rate", 48000)),
         }
 
 

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Device Fingerprint Protection",
+  "version": "1.0.0",
+  "description": "Protects against browser-based fingerprinting techniques",
+  "permissions": [],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

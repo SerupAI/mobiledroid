@@ -23,6 +23,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Set up QEMU for multi-architecture builds
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -52,11 +56,12 @@ jobs:
           echo "API Image: ghcr.io/${REPO_LOWER}-api"
           echo "UI Image: ghcr.io/${REPO_LOWER}-ui"
 
-      - name: Build and push API image
+      - name: Build and push API image (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.api
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ steps.meta.outputs.api_image }}:${{ steps.meta.outputs.tag }}
@@ -66,11 +71,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push UI image
+      - name: Build and push UI image (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.ui
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ steps.meta.outputs.ui_image }}:${{ steps.meta.outputs.tag }}
@@ -82,15 +88,25 @@ jobs:
 
       - name: Summary
         run: |
-          echo "## Docker Images Published" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Images Published (Multi-Architecture)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ steps.meta.outputs.api_image }}\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`${{ steps.meta.outputs.ui_image }}\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "**Architectures:** \`linux/amd64\` (x86_64), \`linux/arm64\` (ARM/Graviton)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tag | Architectures |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----|---------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ steps.meta.outputs.api_image }}\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` | amd64, arm64 |" >> $GITHUB_STEP_SUMMARY
+          echo "| \`${{ steps.meta.outputs.ui_image }}\` | \`${{ steps.meta.outputs.tag }}\`, \`latest\` | amd64, arm64 |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**x86 (Standard EC2):**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ steps.meta.outputs.api_image }}:${{ steps.meta.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ steps.meta.outputs.ui_image }}:${{ steps.meta.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**ARM (Graviton - Better Detection Evasion):**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Same images work on ARM - Docker automatically selects correct architecture" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.meta.outputs.api_image }}:${{ steps.meta.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

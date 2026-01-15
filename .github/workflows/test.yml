@@ -209,21 +209,26 @@ jobs:
             pytest tests/ -v --tb=short
 
   docker-build:
-    name: Docker Production Build
+    name: Docker Production Build (Multi-Arch)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up QEMU for multi-architecture builds
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build API image
+      - name: Build API image (amd64 + arm64)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.api
+          platforms: linux/amd64,linux/arm64
           push: false
           tags: mobiledroid/api:test
           build-args: |
@@ -231,11 +236,12 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
-      - name: Build UI image
+      - name: Build UI image (amd64 + arm64)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.ui
+          platforms: linux/amd64,linux/arm64
           push: false
           tags: mobiledroid/ui:test
           build-args: |

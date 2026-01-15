@@ -3,7 +3,8 @@
 # This script modifies Android system properties to spoof device fingerprint
 # It runs before Android services fully initialize
 #
-# Supports 25+ parameters for comprehensive fingerprint spoofing
+# Supports 30+ parameters for comprehensive fingerprint spoofing
+# Architecture-aware: detects ARM vs x86 and applies appropriate measures
 
 LOG_TAG="FingerprintInjector"
 
@@ -13,6 +14,45 @@ log_info() {
 
 log_error() {
     echo "[$LOG_TAG] ERROR: $1" >&2
+}
+
+# ==========================================
+# ARCHITECTURE DETECTION
+# ==========================================
+# Detect host architecture or use override
+# ARCH_MODE can be: auto, arm64, x86_64
+detect_architecture() {
+    if [ -n "$ARCH_MODE" ] && [ "$ARCH_MODE" != "auto" ]; then
+        DETECTED_ARCH="$ARCH_MODE"
+        log_info "Architecture override: $DETECTED_ARCH"
+    else
+        # Detect from uname or CPU info
+        local arch=$(uname -m 2>/dev/null || cat /proc/cpuinfo | grep -i "model name" | head -1)
+        case "$arch" in
+            aarch64|arm64|armv8*)
+                DETECTED_ARCH="arm64"
+                ;;
+            x86_64|i686|i386|AMD*|Intel*)
+                DETECTED_ARCH="x86_64"
+                ;;
+            *)
+                # Default to x86 for safety (apply all measures)
+                DETECTED_ARCH="x86_64"
+                ;;
+        esac
+        log_info "Detected architecture: $DETECTED_ARCH"
+    fi
+
+    # Set flags for conditional features
+    if [ "$DETECTED_ARCH" = "arm64" ]; then
+        IS_ARM=1
+        IS_X86=0
+        log_info "Running on ARM - native Android execution, minimal anti-detect needed"
+    else
+        IS_ARM=0
+        IS_X86=1
+        log_info "Running on x86 - applying full anti-emulator measures"
+    fi
 }
 
 # Function to set a system property safely
@@ -235,13 +275,37 @@ inject_fingerprint() {
 
     # ==========================================
     # ANTI-EMULATOR DETECTION PROPERTIES
+    # (x86 only - ARM runs natively, no emulation to hide)
     # ==========================================
-    # Make the device appear as a real phone, not an emulator
-    set_prop "ro.kernel.qemu" "0"
-    set_prop "ro.hardware.virtual" "0"
+    if [ "$IS_X86" = "1" ]; then
+        log_info "Applying x86 anti-emulator measures..."
+
+        # Hide QEMU/emulator presence
+        set_prop "ro.kernel.qemu" "0"
+        set_prop "ro.hardware.virtual" "0"
+        set_prop "ro.secure" "1"
+        set_prop "ro.debuggable" "0"
+
+        # Hide emulator-specific paths and features
+        set_prop "ro.kernel.android.checkjni" "0"
+        set_prop "init.svc.qemu-props" "stopped"
+        set_prop "qemu.hw.mainkeys" ""
+
+        # Fake baseband/radio (emulators often lack this)
+        set_prop "gsm.version.baseband" "1.0"
+        set_prop "gsm.version.ril-impl" "android samsung-ril 1.0"
+        set_prop "gsm.nitz.time" "$(date +%s)000"
+
+        # Hide goldfish (Android emulator codename)
+        set_prop "ro.hardware.audio.primary" "$(echo $HARDWARE | tr '[:upper:]' '[:lower:]')"
+
+        log_info "x86 anti-emulator measures applied"
+    else
+        log_info "ARM architecture - skipping x86-specific anti-emulator measures"
+    fi
+
+    # Common CPU ABI list (both architectures)
     set_prop "ro.product.cpu.abilist" "${SUPPORTED_ABIS:-arm64-v8a,armeabi-v7a,armeabi}"
-    set_prop "gsm.version.baseband" "1.0"
-    set_prop "gsm.version.ril-impl" "android samsung-ril 1.0"
 
     # ==========================================
     # P1: GOOGLE SERVICE IDS (2 properties)
@@ -270,6 +334,9 @@ inject_fingerprint() {
 
     log_info "Fingerprint injection completed (30+ parameters set)"
 }
+
+# Detect architecture first
+detect_architecture
 
 # Execute injection
 inject_fingerprint

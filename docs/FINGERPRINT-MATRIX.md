@@ -7,12 +7,13 @@
 
 | Metric | MobileDroid | GeLark |
 |--------|:-----------:|:------:|
-| **Parameters** | 30+ | 55+ |
-| **Core Evasion** | 80% | 95% |
-| **Browser Detection** | Basic | Full |
-| **Google Services** | Partial (GSF/GAID) | Full |
+| **Parameters** | 35+ | 55+ |
+| **Core Evasion** | 90% | 95% |
+| **Browser Detection** | Full (WebGL/Canvas/Audio) | Full |
+| **Google Services** | Full (GSF/GAID) | Full |
 | **Sensor Spoof** | None | Full |
-| **Architecture** | Redroid (Docker) | Cloud Phone + Android Emulator |
+| **Architecture** | Redroid (Docker) x86/ARM | Cloud Phone + Android Emulator |
+| **ARM Native** | ✅ Yes | Unknown |
 
 ---
 
@@ -71,9 +72,10 @@
 | GL Renderer | ✅ | ✅ | Core | Done | Adreno/Mali |
 | GL Vendor | ✅ | ✅ | Core | Done | Qualcomm/ARM |
 | OpenGL version | ✅ | ✅ | Core | Done | |
-| **WebGL fingerprint** | ❌ | ✅ | Core | **P1** | Browser detection |
-| **Canvas fingerprint** | ❌ | ✅ | Core | **P1** | Browser detection |
-| WebGL extensions | ❌ | ✅ | SaaS | P2 | |
+| **WebGL fingerprint** | ✅ | ✅ | Core | Done | Chrome extension injection |
+| **Canvas fingerprint** | ✅ | ✅ | Core | Done | Pixel noise + toDataURL spoof |
+| **Audio fingerprint** | ✅ | ✅ | Core | Done | Oscillator noise injection |
+| WebGL extensions | ✅ | ✅ | Core | Done | Spoofed extension list |
 
 ### Network
 
@@ -125,10 +127,13 @@
 
 | Feature | MobileDroid | GeLark | Tier | Priority | Notes |
 |---------|:-----------:|:------:|:----:|:--------:|-------|
-| Hide qemu/virtual | ✅ | ✅ | Core | Done | `ro.kernel.qemu=0` |
-| Baseband version | ✅ | ✅ | Core | Done | Real baseband string |
-| RIL version | ✅ | ✅ | Core | Done | |
-| Emulator detection bypass | ⚠️ | ✅ | Core | P1 | Some apps still detect |
+| Hide qemu/virtual | ✅ | ✅ | Core | Done | `ro.kernel.qemu=0` (x86 only) |
+| Baseband version | ✅ | ✅ | Core | Done | Real baseband string (x86 only) |
+| RIL version | ✅ | ✅ | Core | Done | (x86 only) |
+| Architecture detection | ✅ | ❓ | Core | Done | Auto-detects ARM vs x86 |
+| **ARM native execution** | ✅ | ❓ | Core | Done | No emulation artifacts on ARM |
+
+> **Note**: Anti-emulator measures are architecture-aware. On ARM (Graviton), Android runs natively so there are no emulation artifacts to hide. On x86, full anti-emulator measures are applied automatically.
 
 ### Vendor-Specific
 
@@ -144,7 +149,7 @@
 
 ## P1 Implementation Status
 
-### Completed ✅
+### All P1 Items Completed ✅
 
 #### 1. GSF ID (Google Services Framework)
 - ✅ Unique 64-bit signed integer
@@ -160,19 +165,23 @@
 - ✅ Boot timestamp randomized (1-7 days ago)
 - ✅ Set via `ro.runtime.firstboot` and `persist.sys.boot_time`
 
-### Remaining P1
-
 #### 4. WebGL Fingerprint (Browser)
-- GPU rendering signature
-- Detected by browser-based checks
-- Need to match real device WebGL output
-- **Complexity**: Requires browser-level hooks
+- ✅ Mobile GPU vendor/renderer spoofing (Adreno, Mali, PowerVR)
+- ✅ WebGL parameter interception
+- ✅ Extension list spoofing
+- ✅ Shader source noise injection
+- **Implementation**: Chrome extension + JS injection
 
 #### 5. Canvas Fingerprint (Browser)
-- HTML5 canvas rendering variations
-- Font rendering differences
-- Device-specific patterns
-- **Complexity**: Requires browser-level hooks
+- ✅ Pixel-level noise injection on getImageData()
+- ✅ toDataURL() variation for consistent fingerprint disruption
+- ✅ toBlob() modification
+- **Implementation**: Chrome extension + JS injection
+
+#### 6. Audio Fingerprint (Browser)
+- ✅ Oscillator frequency noise
+- ✅ Analyser frequency data noise
+- **Implementation**: AudioContext API hooks
 
 ---
 
@@ -180,13 +189,15 @@
 
 | Platform | Risk Level | Key Checks | MobileDroid Status |
 |----------|:----------:|------------|:------------------:|
-| **Instagram** | High | Device linking, IP, behavior | ⚠️ Needs P1 |
-| **TikTok** | Very High | SafetyNet, sensors, timing | ⚠️ Needs P1+P2 |
-| **Threads** | High | Same as Instagram | ⚠️ Needs P1 |
+| **Instagram** | High | Device linking, IP, behavior | ✅ P1 Complete |
+| **TikTok** | Very High | SafetyNet, sensors, timing | ⚠️ Needs P2 (sensors) |
+| **Threads** | High | Same as Instagram | ✅ P1 Complete |
 | **Twitter/X** | Medium | Basic device check | ✅ OK |
-| **Facebook** | High | Device graph, IP linking | ⚠️ Needs P1 |
+| **Facebook** | High | Device graph, IP linking | ✅ P1 Complete |
 | **LinkedIn** | Medium | Basic checks | ✅ OK |
 | **Reddit** | Low | Minimal detection | ✅ OK |
+
+> **Note**: With P1 complete (WebGL/Canvas/Audio), detection risk is significantly reduced. TikTok's sensor-based detection requires P2 (sensor spoofing) which is a SaaS feature.
 
 ---
 
@@ -207,10 +218,20 @@ Even with perfect fingerprinting, IP address matters:
 
 ## Files Reference
 
+### System-Level Fingerprinting
 - **Fingerprint configs**: `config/fingerprints/devices.json`
 - **Fingerprint service**: `packages/api/src/services/fingerprint_service.py`
 - **Fingerprint router**: `packages/api/src/routers/fingerprints.py`
 - **Device schemas**: `packages/api/src/schemas/profile.py`
+- **Injection script**: `docker/scripts/inject-fingerprint.sh` (architecture-aware)
+
+### Browser-Level Fingerprinting (P1)
+- **Protection script**: `docker/scripts/browser-fingerprint-protection.js`
+- **Chrome extension**: `docker/chrome-extension/`
+  - `manifest.json` - Extension manifest (Manifest V3)
+  - `content.js` - Content script that injects protection
+  - `inject.js` - Core protection code (WebGL/Canvas/Audio/WebRTC)
+- **Install script**: `docker/scripts/install-fingerprint-extension.sh`
 
 ---
 
