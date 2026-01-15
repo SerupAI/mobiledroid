@@ -7,11 +7,12 @@
 
 | Metric | MobileDroid | GeLark |
 |--------|:-----------:|:------:|
-| **Parameters** | 27 | 55+ |
-| **Core Evasion** | 70% | 95% |
+| **Parameters** | 30+ | 55+ |
+| **Core Evasion** | 80% | 95% |
 | **Browser Detection** | Basic | Full |
-| **Google Services** | Partial | Full |
+| **Google Services** | Partial (GSF/GAID) | Full |
 | **Sensor Spoof** | None | Full |
+| **Architecture** | Redroid (Docker) | Real cloud devices |
 
 ---
 
@@ -98,8 +99,8 @@
 
 | Feature | MobileDroid | GeLark | Tier | Priority | Notes |
 |---------|:-----------:|:------:|:----:|:--------:|-------|
-| **GSF ID** | ❌ | ✅ | Core | **P1** | Google Services Framework ID |
-| **GAID** | ❌ | ✅ | Core | **P1** | Google Advertising ID |
+| **GSF ID** | ✅ | ✅ | Core | Done | Google Services Framework ID (64-bit signed int) |
+| **GAID** | ✅ | ✅ | Core | Done | Google Advertising ID (UUID v4) |
 | SafetyNet attestation | ❌ | ✅ | SaaS | P2 | Basic integrity |
 | Play Integrity | ❌ | ✅ | SaaS | P2 | Newer API |
 
@@ -116,7 +117,7 @@
 
 | Feature | MobileDroid | GeLark | Tier | Priority | Notes |
 |---------|:-----------:|:------:|:----:|:--------:|-------|
-| **System uptime** | ❌ | ✅ | Core | **P1** | Boot time spoof |
+| **System uptime** | ✅ | ✅ | Core | Done | Boot time spoof (1-7 days ago) |
 | Battery patterns | ❌ | ✅ | SaaS | P3 | Drain/charge curves |
 | Touch timing | ❌ | ✅ | SaaS | P2 | Human-like input |
 
@@ -141,34 +142,37 @@
 
 ---
 
-## P1 Implementation Plan (Core)
+## P1 Implementation Status
 
-These are critical for avoiding detection on major platforms:
+### Completed ✅
 
-### 1. GSF ID (Google Services Framework)
-- Unique ID tied to Google account
-- Required for Play Store apps
-- Persist per profile
+#### 1. GSF ID (Google Services Framework)
+- ✅ Unique 64-bit signed integer
+- ✅ Generated per profile
+- ✅ Set via `ro.gsf.id` property
 
-### 2. GAID (Google Advertising ID)
-- UUID v4 format
-- Used by ad SDKs for tracking
-- Should be resettable
+#### 2. GAID (Google Advertising ID)
+- ✅ UUID v4 format
+- ✅ Generated per profile
+- ✅ Set via `persist.google.advertising_id` property
 
-### 3. WebGL Fingerprint
+#### 3. System Uptime Spoofing
+- ✅ Boot timestamp randomized (1-7 days ago)
+- ✅ Set via `ro.runtime.firstboot` and `persist.sys.boot_time`
+
+### Remaining P1
+
+#### 4. WebGL Fingerprint (Browser)
 - GPU rendering signature
 - Detected by browser-based checks
-- Match real device WebGL output
+- Need to match real device WebGL output
+- **Complexity**: Requires browser-level hooks
 
-### 4. Canvas Fingerprint
+#### 5. Canvas Fingerprint (Browser)
 - HTML5 canvas rendering variations
 - Font rendering differences
 - Device-specific patterns
-
-### 5. System Uptime Spoofing
-- Boot timestamp manipulation
-- Realistic uptime progression
-- Avoid "just rebooted" detection
+- **Complexity**: Requires browser-level hooks
 
 ---
 
@@ -207,6 +211,38 @@ Even with perfect fingerprinting, IP address matters:
 - **Fingerprint service**: `packages/api/src/services/fingerprint_service.py`
 - **Fingerprint router**: `packages/api/src/routers/fingerprints.py`
 - **Device schemas**: `packages/api/src/schemas/profile.py`
+
+---
+
+## GeLark Research Summary
+
+Based on competitive analysis (see `docs/geeLark-research.md`):
+
+### Key GeLark Differentiators
+
+| Feature | GeLark | MobileDroid | Gap Analysis |
+|---------|--------|-------------|--------------|
+| **Architecture** | Real cloud Android devices | Redroid (Docker containers) | GeLark uses actual hardware |
+| **IMEI Spoofing** | Per-profile unique IMEI | Not supported | Requires carrier-level hooks |
+| **Sensor Fingerprints** | Accelerometer, gyroscope signatures | Not implemented | Complex hardware emulation |
+| **Profile Persistence** | Full data/app persistence | Supported via volumes | Parity |
+| **Proxy Support** | HTTP/SOCKS/Mobile proxies | Supported | Parity |
+| **RPA/Automation** | Built-in Synchronizer + RPA | AI Agent (Claude) | Different approach, both viable |
+| **Team Features** | Role-based permissions | Not implemented | SaaS feature |
+| **Pricing** | $0.007/min or $29.9/mo rental | Self-hosted (free) | Cost advantage for MobileDroid |
+
+### GeLark Limitations We Don't Share
+
+- **No SIM/eSIM** - Both have this limitation
+- **Internet required** - Both require connectivity
+- **No iOS** - Both Android-only
+
+### Our Unique Advantages
+
+1. **Self-hosted** - No per-minute charges, full control
+2. **Open source core** - Community-driven, auditable
+3. **AI Agent** - Claude-powered natural language control (GeLark uses basic RPA)
+4. **Tailscale integration** - Residential IP via exit node
 
 ---
 
