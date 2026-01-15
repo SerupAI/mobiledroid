@@ -288,7 +288,8 @@ class TestProfileServiceStart:
         assert profile.last_started_at is not None
         mock_docker_service.create_container.assert_called_once()
         mock_docker_service.wait_for_boot.assert_called_once()
-        mock_adb_service.connect.assert_called_once_with("localhost", 5555)
+        # ADB connects via container name on Docker network
+        mock_adb_service.connect.assert_called_once_with(f"mobiledroid-{sample_profile.id}", 5555)
 
     async def test_start_already_running_profile(
         self,

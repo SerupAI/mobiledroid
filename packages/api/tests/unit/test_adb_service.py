@@ -90,7 +90,10 @@ class TestADBServiceScreenshot:
 
     async def test_screenshot_device_not_connected(self):
         """Test screenshot with no connected device."""
-        with patch("src.services.adb_service.adb"):
+        with patch("src.services.adb_service.adb") as mock_adb:
+            # Simulate device not found
+            mock_adb.device.side_effect = Exception("device not found")
+
             from src.services.adb_service import ADBService
             service = ADBService()
 
@@ -137,7 +140,10 @@ class TestADBServiceInput:
 
     async def test_tap_device_not_connected(self):
         """Test tap with no connected device."""
-        with patch("src.services.adb_service.adb"):
+        with patch("src.services.adb_service.adb") as mock_adb:
+            # Simulate device not found
+            mock_adb.device.side_effect = Exception("device not found")
+
             from src.services.adb_service import ADBService
             service = ADBService()
 
@@ -281,7 +287,10 @@ class TestADBServiceDeviceInfo:
 
     async def test_get_device_info_not_connected(self):
         """Test device info when not connected."""
-        with patch("src.services.adb_service.adb"):
+        with patch("src.services.adb_service.adb") as mock_adb:
+            # Simulate device not found
+            mock_adb.device.side_effect = Exception("device not found")
+
             from src.services.adb_service import ADBService
             service = ADBService()
 
@@ -311,7 +320,10 @@ class TestADBServiceShell:
 
     async def test_shell_not_connected(self):
         """Test shell command when not connected."""
-        with patch("src.services.adb_service.adb"):
+        with patch("src.services.adb_service.adb") as mock_adb:
+            # Simulate device not found
+            mock_adb.device.side_effect = Exception("device not found")
+
             from src.services.adb_service import ADBService
             service = ADBService()
 
@@ -385,7 +397,10 @@ class TestADBServiceApps:
 
     async def test_launch_app_not_connected(self):
         """Test app launch when not connected."""
-        with patch("src.services.adb_service.adb"):
+        with patch("src.services.adb_service.adb") as mock_adb:
+            # Simulate device not found
+            mock_adb.device.side_effect = Exception("device not found")
+
             from src.services.adb_service import ADBService
             service = ADBService()
 
