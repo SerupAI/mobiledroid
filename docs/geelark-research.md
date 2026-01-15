@@ -6,6 +6,22 @@
 
 ---
 
+## Product Suite Overview
+
+GeLark offers **multiple products**, not just cloud phones:
+
+| Product | Description | Comparable To |
+|---------|-------------|---------------|
+| **Cloud Phone** | Virtual Android on cloud servers | Premium cloud service |
+| **Android Emulator** | Local Android emulator | **MobileDroid/Redroid** |
+| **Phone Farm** | Manage physical device farms | Hardware management |
+| **Proxy Browser** | Antidetect browser | GoLogin, Multilogin |
+| **Multi-account Browser** | Browser profile management | Antidetect browsers |
+
+**Key insight:** Their "Android Emulator" product is comparable to our Redroid approach. The "Cloud Phone" is their premium cloud-hosted option.
+
+---
+
 ## Table of Contents
 1. [What is GeeLark?](#what-is-geelark)
 2. [Cloud Phones Explained](#cloud-phones-explained)

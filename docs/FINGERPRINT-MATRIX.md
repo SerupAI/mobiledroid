@@ -12,7 +12,7 @@
 | **Browser Detection** | Basic | Full |
 | **Google Services** | Partial (GSF/GAID) | Full |
 | **Sensor Spoof** | None | Full |
-| **Architecture** | Redroid (Docker) | Real cloud devices |
+| **Architecture** | Redroid (Docker) | Cloud Phone + Android Emulator |
 
 ---
 
@@ -218,11 +218,20 @@ Even with perfect fingerprinting, IP address matters:
 
 Based on competitive analysis (see `docs/geeLark-research.md`):
 
+### GeLark Product Suite
+
+GeLark offers **5 products**, not just cloud phones:
+- **Cloud Phone** - Premium cloud-hosted Android
+- **Android Emulator** - Local emulator (comparable to MobileDroid)
+- **Phone Farm** - Physical device management
+- **Proxy Browser** - Antidetect browser
+- **Multi-account Browser** - Browser profile management
+
 ### Key GeLark Differentiators
 
 | Feature | GeLark | MobileDroid | Gap Analysis |
 |---------|--------|-------------|--------------|
-| **Architecture** | Real cloud Android devices | Redroid (Docker containers) | GeLark uses actual hardware |
+| **Architecture** | Cloud Phone + Android Emulator | Redroid (Docker) | We're comparable to their emulator product |
 | **IMEI Spoofing** | Per-profile unique IMEI | Not supported | Requires carrier-level hooks |
 | **Sensor Fingerprints** | Accelerometer, gyroscope signatures | Not implemented | Complex hardware emulation |
 | **Profile Persistence** | Full data/app persistence | Supported via volumes | Parity |
