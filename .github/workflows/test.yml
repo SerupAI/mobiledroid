@@ -167,6 +167,7 @@ jobs:
           context: .
           file: docker/Dockerfile.test
           push: false
+          load: true
           tags: mobiledroid/api-test:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -175,3 +176,39 @@ jobs:
         run: |
           docker run --rm mobiledroid/api-test:latest \
             pytest tests/ -v --tb=short
+
+  docker-build:
+    name: Docker Production Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: false
+          tags: mobiledroid/api:test
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build UI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.ui
+          push: false
+          tags: mobiledroid/ui:test
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            NEXT_PUBLIC_API_URL=http://localhost:8100
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,mode=max,scope=ui

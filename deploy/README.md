@@ -8,7 +8,11 @@ MobileDroid requires:
 - **Linux** with kernel 5.4+ (for Android container support)
 - **2+ vCPU, 4GB+ RAM** minimum (4 vCPU, 8GB recommended)
 - **Docker** and Docker Compose
+- **Privileged containers** (for Redroid Android emulation)
+- **Kernel modules**: binder_linux, ashmem_linux
 - **Ports**: 3100 (UI), 8100 (API), 22 (SSH)
+
+> **Note**: Container platforms (Railway, Render, Heroku, DigitalOcean App Platform) do not support the privileged containers required for Android emulation. Use VM-based deployments below instead.
 
 ---
 
