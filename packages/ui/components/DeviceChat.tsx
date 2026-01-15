@@ -281,7 +281,30 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to send message');
+        // Try to get error details from response body
+        let errorMessage = 'Failed to send message';
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) {
+            errorMessage = typeof errorData.detail === 'string'
+              ? errorData.detail
+              : JSON.stringify(errorData.detail);
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            // Handle Anthropic-style errors
+            const err = errorData.error;
+            if (err.message) {
+              errorMessage = err.message;
+            } else if (typeof err === 'string') {
+              errorMessage = err;
+            }
+          }
+        } catch {
+          // If we can't parse JSON, use status text
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
       
       const reader = response.body?.getReader();
@@ -363,11 +386,27 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
         }
       }
     } catch (error) {
+      let errorMessage = 'An unexpected error occurred';
+
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        // Network error - API server not reachable
+        errorMessage = 'Unable to connect to the server. Please check that the API is running and try again.';
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+
+        // Make common errors more user-friendly
+        if (errorMessage.includes('credit balance is too low')) {
+          errorMessage = 'Anthropic API credits exhausted. Please add credits at console.anthropic.com';
+        } else if (errorMessage.includes('Invalid API key') || errorMessage.includes('invalid_api_key')) {
+          errorMessage = 'Invalid Anthropic API key. Please check your API key configuration.';
+        }
+      }
+
       setChatHistory(prev => [
         ...prev.filter(m => m.type !== 'thinking'),
         {
           type: 'error',
-          message: error instanceof Error ? error.message : 'Failed to send message',
+          message: errorMessage,
           timestamp: new Date(),
         },
       ]);

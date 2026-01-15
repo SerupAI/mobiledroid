@@ -1,0 +1,44 @@
+# MobileDroid Terraform Configuration
+#
+# Copy this file to terraform.tfvars and customize:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# Then run:
+#   terraform init
+#   terraform plan
+#   terraform apply
+
+# AWS Region
+aws_region = "us-east-1"
+
+# Instance type (t3.xlarge recommended for production)
+# Minimum: t3.medium (2 vCPU, 4GB RAM)
+instance_type = "t3.xlarge"
+
+# Root volume size in GB
+volume_size = 30
+
+# SECURITY: Restrict SSH access to your IP
+# Find your IP: curl -s https://api.ipify.org
+# Format: ["YOUR.PUBLIC.IP/32"]
+allowed_ssh_cidrs = ["0.0.0.0/0"]  # CHANGE THIS!
+
+# SECURITY: Restrict web access (UI/API)
+# Set to ["0.0.0.0/0"] for public access
+# Set to ["YOUR.IP/32"] for private access
+allowed_web_cidrs = ["0.0.0.0/0"]
+
+# Create Elastic IP for stable address
+create_elastic_ip = true
+
+# Enable HTTP/HTTPS if using reverse proxy
+enable_http  = false
+enable_https = false
+
+# Existing EC2 key pair (leave empty to create new)
+key_name = ""
+
+# API Keys (optional - can be set after deployment)
+# Get Anthropic key: https://console.anthropic.com/
+anthropic_api_key = ""
+openai_api_key    = ""

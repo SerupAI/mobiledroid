@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mobiledroid-config
+  namespace: mobiledroid
+data:
+  DATABASE_URL: "postgresql+asyncpg://mobiledroid:mobiledroid@postgres:5432/mobiledroid"
+  REDIS_URL: "redis://redis:6379/0"
+  PYTHONPATH: "/app"
+  PYTHONUNBUFFERED: "1"
+  DEBUG: "false"
+  # API URL for UI (internal service)
+  NEXT_PUBLIC_API_URL: "http://api:8000"
