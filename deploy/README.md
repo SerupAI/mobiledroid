@@ -42,6 +42,19 @@ For graphics-intensive automation, use GPU-accelerated instances:
 | g4dn.xlarge | NVIDIA T4 | ~$0.53/hr | [![Launch GPU Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid-gpu&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-gpu.yaml) |
 | g6.xlarge | NVIDIA L4 | ~$0.80/hr | [![Launch GPU Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=mobiledroid-gpu&templateURL=https://raw.githubusercontent.com/serup-ai/mobiledroid/main/deploy/aws/cloudformation-gpu.yaml) |
 
+### AWS Terraform (Infrastructure as Code)
+
+For more control over your infrastructure, use Terraform:
+
+```bash
+cd deploy/terraform
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your settings
+terraform init && terraform apply
+```
+
+[Full Terraform Documentation](terraform/README.md)
+
 ---
 
 ## DigitalOcean
@@ -184,6 +197,26 @@ Make sure these ports are open:
 cd /opt/mobiledroid/docker
 docker compose logs -f
 ```
+
+---
+
+## Kubernetes
+
+For Kubernetes deployments (requires nodes with Docker and kernel modules):
+
+```bash
+cd deploy/kubernetes
+cp secret.yaml.example secret.yaml
+# Edit secret.yaml with base64-encoded API keys
+kubectl apply -k .
+```
+
+**Requirements**:
+- Nodes must have Docker installed (not just containerd)
+- Nodes must have `binder_linux` and `ashmem_linux` kernel modules loaded
+- API pod needs access to Docker socket for container management
+
+[Full Kubernetes Documentation](kubernetes/README.md)
 
 ---
 
