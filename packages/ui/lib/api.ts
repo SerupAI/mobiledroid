@@ -1,6 +1,7 @@
 // Determine API URL: use env var, or derive from current location
+// This is called lazily to ensure window is available on client
 const getApiUrl = (): string => {
-  // Server-side or env var set
+  // Env var takes priority
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
@@ -12,11 +13,9 @@ const getApiUrl = (): string => {
     return `${protocol}//${hostname}:8100`;
   }
 
-  // Fallback for SSR
-  return 'http://localhost:8000';
+  // Fallback for SSR (will be replaced on client)
+  return 'http://api:8000';
 };
-
-const API_URL = getApiUrl();
 
 export interface ProfileFingerprint {
   model: string;
@@ -278,17 +277,16 @@ export interface SettingsStatus {
 }
 
 class ApiClient {
-  private baseUrl: string;
-
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
+  private getBaseUrl(): string {
+    return getApiUrl();
   }
 
   private async request<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const baseUrl = this.getBaseUrl();
+    const response = await fetch(`${baseUrl}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -363,7 +361,7 @@ class ApiClient {
   }
 
   getScreenshotUrl(id: string): string {
-    return `${this.baseUrl}/profiles/${id}/screenshot`;
+    return `${this.getBaseUrl()}/profiles/${id}/screenshot`;
   }
 
   async checkDeviceReady(id: string): Promise<{
@@ -630,7 +628,7 @@ class ApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${this.baseUrl}/proxies/upload`, {
+    const response = await fetch(`${this.getBaseUrl()}/proxies/upload`, {
       method: 'POST',
       body: formData,
     });
@@ -663,4 +661,4 @@ class ApiClient {
   }
 }
 
-export const api = new ApiClient(API_URL);
+export const api = new ApiClient();
