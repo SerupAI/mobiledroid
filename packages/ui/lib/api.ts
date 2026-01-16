@@ -1,4 +1,22 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Determine API URL: use env var, or derive from current location
+const getApiUrl = (): string => {
+  // Server-side or env var set
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // Client-side: derive from browser location
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname } = window.location;
+    // Replace UI port (3100) with API port (8100)
+    return `${protocol}//${hostname}:8100`;
+  }
+
+  // Fallback for SSR
+  return 'http://localhost:8000';
+};
+
+const API_URL = getApiUrl();
 
 export interface ProfileFingerprint {
   model: string;
