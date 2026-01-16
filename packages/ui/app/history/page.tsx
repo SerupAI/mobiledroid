@@ -74,7 +74,7 @@ export default function HistoryPage() {
   const { data: historyData, isLoading: historyLoading } = useQuery<ChatHistoryResponse>({
     queryKey: ['chat-history'],
     queryFn: async () => {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/history?limit=500`);
+      const response = await fetch(`/api/chat/history?limit=500`);
       if (!response.ok) throw new Error('Failed to fetch history');
       return response.json();
     },
@@ -85,7 +85,7 @@ export default function HistoryPage() {
   const { data: profilesData } = useQuery({
     queryKey: ['profiles'],
     queryFn: async () => {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/profiles`);
+      const response = await fetch(`/api/profiles`);
       if (!response.ok) throw new Error('Failed to fetch profiles');
       return response.json();
     },

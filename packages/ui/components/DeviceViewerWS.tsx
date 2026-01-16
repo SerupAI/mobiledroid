@@ -66,9 +66,12 @@ export function DeviceViewerWS({ profileId, onTap }: DeviceViewerProps) {
 
     const connectWebSocket = () => {
       // Build WebSocket URL based on current location
+      // WebSockets need direct connection to API (can't proxy through Next.js)
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;
-      const apiPort = process.env.NEXT_PUBLIC_API_URL?.match(/:(\d+)/)?.[1] || '8100';
+      // Map UI port to API port (3100 -> 8100, 3000 -> 8000)
+      const uiPort = parseInt(window.location.port || '3100', 10);
+      const apiPort = uiPort - 3000 + 8000; // 3100 -> 8100, 3000 -> 8000
       const wsUrl = `${protocol}//${host}:${apiPort}/ws/profiles/${profileId}/stream`;
 
       console.log('Connecting to WebSocket:', wsUrl);

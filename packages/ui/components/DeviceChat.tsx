@@ -202,7 +202,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
     setIsLoadingHistory(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/chat/profiles/${profileId}/history`
+        `/api/chat/profiles/${profileId}/history`
       );
       if (response.ok) {
         const data = await response.json();
@@ -223,7 +223,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
 
   const stopChat = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/profiles/${profileId}/stop`, {
+      const response = await fetch(`/api/chat/profiles/${profileId}/stop`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -272,7 +272,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
     setIsStreaming(true);
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/profiles/${profileId}/stream`, {
+      const response = await fetch(`/api/chat/profiles/${profileId}/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

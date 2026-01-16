@@ -69,7 +69,11 @@
       "Bash(gh run view:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr checks:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(ping:*)",
+      "Bash(nc -zv -w 5 100.122.30.80 3100:*)",
+      "Bash(nc:*)",
+      "Bash(time curl:*)"
     ]
   }
 }

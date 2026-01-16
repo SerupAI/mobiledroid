@@ -1,21 +1,6 @@
-// Determine API URL: use env var, or derive from current location
-// This is called lazily to ensure window is available on client
-const getApiUrl = (): string => {
-  // Env var takes priority
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
-  // Client-side: derive from browser location
-  if (typeof window !== 'undefined') {
-    const { protocol, hostname } = window.location;
-    // Replace UI port (3100) with API port (8100)
-    return `${protocol}//${hostname}:8100`;
-  }
-
-  // Fallback for SSR (will be replaced on client)
-  return 'http://api:8000';
-};
+// Use relative /api path - Next.js rewrites proxy this to the backend
+// This works regardless of what hostname/port the user accesses from
+const API_BASE = '/api';
 
 export interface ProfileFingerprint {
   model: string;
@@ -277,16 +262,11 @@ export interface SettingsStatus {
 }
 
 class ApiClient {
-  private getBaseUrl(): string {
-    return getApiUrl();
-  }
-
   private async request<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const baseUrl = this.getBaseUrl();
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -361,7 +341,7 @@ class ApiClient {
   }
 
   getScreenshotUrl(id: string): string {
-    return `${this.getBaseUrl()}/profiles/${id}/screenshot`;
+    return `${API_BASE}/profiles/${id}/screenshot`;
   }
 
   async checkDeviceReady(id: string): Promise<{
@@ -628,7 +608,7 @@ class ApiClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${this.getBaseUrl()}/proxies/upload`, {
+    const response = await fetch(`${API_BASE}/proxies/upload`, {
       method: 'POST',
       body: formData,
     });
