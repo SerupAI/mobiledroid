@@ -8,10 +8,11 @@ from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 import structlog
 
 from src.config import settings
-from src.models.task import Task, TaskStatus, TaskPriority
+from src.models.task import Task, TaskLog, TaskStatus, TaskPriority
 
 logger = structlog.get_logger()
 
@@ -101,7 +102,14 @@ class TaskQueueService:
 
         self.db.add(task)
         await self.db.commit()
-        await self.db.refresh(task)
+
+        # Fetch with eager loading of logs relationship
+        result = await self.db.execute(
+            select(Task)
+            .where(Task.id == task_id)
+            .options(selectinload(Task.logs))
+        )
+        task = result.scalar_one()
 
         logger.info(
             "Task created",
@@ -172,7 +180,11 @@ class TaskQueueService:
 
     async def cancel_task(self, task_id: str) -> Task | None:
         """Cancel a queued or scheduled task."""
-        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        result = await self.db.execute(
+            select(Task)
+            .where(Task.id == task_id)
+            .options(selectinload(Task.logs))
+        )
         task = result.scalar_one_or_none()
 
         if not task:
@@ -203,7 +215,11 @@ class TaskQueueService:
 
     async def get_task(self, task_id: str) -> Task | None:
         """Get task by ID."""
-        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        result = await self.db.execute(
+            select(Task)
+            .where(Task.id == task_id)
+            .options(selectinload(Task.logs))
+        )
         return result.scalar_one_or_none()
 
     async def list_tasks(
@@ -214,7 +230,11 @@ class TaskQueueService:
         offset: int = 0,
     ) -> list[Task]:
         """List tasks with optional filters."""
-        query = select(Task).order_by(Task.created_at.desc())
+        query = (
+            select(Task)
+            .options(selectinload(Task.logs))
+            .order_by(Task.created_at.desc())
+        )
 
         if profile_id:
             query = query.where(Task.profile_id == profile_id)
@@ -247,7 +267,11 @@ class TaskQueueService:
 
     async def retry_failed_task(self, task_id: str) -> Task | None:
         """Retry a failed task."""
-        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        result = await self.db.execute(
+            select(Task)
+            .where(Task.id == task_id)
+            .options(selectinload(Task.logs))
+        )
         task = result.scalar_one_or_none()
 
         if not task:

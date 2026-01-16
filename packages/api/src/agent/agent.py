@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable
 
 from adbutils import adb, AdbDevice
-from anthropic import Anthropic
 import structlog
 
 from .actions import Action, ActionExecutor, ActionType
 from .prompts import AGENT_SYSTEM_PROMPT, get_task_prompt
 from .vision import VisionService
+from .llm_clients import LiteLLMClient, create_llm_client
 
 logger = structlog.get_logger()
 
@@ -24,6 +24,7 @@ class AgentConfig:
     max_steps: int = 50
     step_delay: float = 1.0  # Seconds to wait between steps
     llm_model: str = "claude-sonnet-4-5-20250929"
+    llm_provider: str = "anthropic"  # anthropic, openai, or google
     temperature: float = 0.0
     stuck_detection_threshold: int = 3  # Max identical screenshots before stuck
     max_recovery_attempts: int = 2  # Max recovery attempts per stuck state
@@ -56,32 +57,59 @@ class MobileDroidAgent:
     def __init__(
         self,
         device: AdbDevice,
-        anthropic_api_key: str,
+        api_key: str,
         config: AgentConfig | None = None,
+        provider_name: str = "anthropic",
     ):
+        """Initialize the agent.
+
+        Args:
+            device: ADB device to control
+            api_key: API key for the LLM provider
+            config: Agent configuration
+            provider_name: LLM provider name (anthropic, openai, google)
+        """
         self.device = device
-        self.llm = Anthropic(api_key=anthropic_api_key)
         self.config = config or AgentConfig()
+
+        # Override provider from config if specified
+        if config and config.llm_provider:
+            provider_name = config.llm_provider
+
+        # Create appropriate LLM client
+        self.llm_client = create_llm_client(provider_name, api_key)
+        self.provider_name = provider_name
 
         self.vision = VisionService(device)
         self.executor = ActionExecutor(device)
 
         self.history: list[dict[str, Any]] = []
         self.total_tokens = 0
-        
+
         # Stuck detection state
         self.screenshot_history: list[str] = []  # Store screenshot hashes
         self.recovery_attempts = 0
+
+        logger.info("Agent initialized", provider=provider_name, model=self.config.llm_model)
 
     @classmethod
     async def connect(
         cls,
         host: str,
         port: int,
-        anthropic_api_key: str,
+        api_key: str,
         config: AgentConfig | None = None,
+        provider_name: str = "anthropic",
     ) -> "MobileDroidAgent":
-        """Connect to a device and create an agent."""
+        """Connect to a device and create an agent.
+
+        Args:
+            host: Device host address
+            port: Device ADB port
+            api_key: API key for the LLM provider
+            config: Agent configuration
+            provider_name: LLM provider name (anthropic, openai, google)
+        """
         address = f"{host}:{port}"
 
         # Connect to device
@@ -91,7 +119,7 @@ class MobileDroidAgent:
         device = adb.device(serial=address)
         logger.info("Connected to device", address=address)
 
-        return cls(device, anthropic_api_key, config)
+        return cls(device, api_key, config, provider_name)
 
     async def execute_task(
         self,
@@ -442,35 +470,32 @@ Current screen:""",
             {"role": "user", "content": user_content},
         ]
 
-        # Call LLM with debug logging
-        loop = asyncio.get_event_loop()
+        # Call LLM via the provider-specific client
         try:
-            logger.debug("Calling Anthropic API", model=self.config.llm_model, api_key_length=len(self.llm.api_key))
-            response = await loop.run_in_executor(
-                None,
-                lambda: self.llm.messages.create(
-                    model=self.config.llm_model,
-                    max_tokens=1024,
-                    temperature=self.config.temperature,
-                    system=AGENT_SYSTEM_PROMPT,
-                    messages=messages,
-                ),
+            logger.debug(
+                "Calling LLM API",
+                provider=self.provider_name,
+                model=self.config.llm_model,
             )
-            logger.debug("Anthropic API call successful")
+            response_text, tokens_used = await self.llm_client.create_message(
+                messages=messages,
+                system=AGENT_SYSTEM_PROMPT,
+                model=self.config.llm_model,
+                max_tokens=1024,
+                temperature=self.config.temperature,
+            )
+            logger.debug("LLM API call successful", provider=self.provider_name)
         except Exception as e:
-            logger.error("Anthropic API call failed", error=str(e), error_type=type(e).__name__)
-            # Log more details about the error
-            if hasattr(e, 'response'):
-                logger.error("API response details", response=str(e.response))
-            if hasattr(e, 'body'):
-                logger.error("API body details", body=str(e.body))
+            logger.error(
+                "LLM API call failed",
+                provider=self.provider_name,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
         # Track token usage
-        self.total_tokens += response.usage.input_tokens + response.usage.output_tokens
-
-        # Extract response text
-        response_text = response.content[0].text
+        self.total_tokens += tokens_used
 
         # Parse the JSON action
         action_data = self._parse_action_json(response_text)

@@ -39,12 +39,17 @@ class ChatSession(Base, TimestampMixin):
     # Session metadata
     initial_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
+    # Status values: active, completed, error, cancelled, awaiting_approval
 
     # Aggregated metrics
     total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_steps: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Step limit approval flow
+    max_steps_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    require_approval: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     # Timing
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

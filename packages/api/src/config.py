@@ -58,7 +58,8 @@ class Settings(BaseSettings):
     # LLM Providers
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
-    default_llm_provider: Literal["anthropic", "openai"] = "anthropic"
+    gemini_api_key: str | None = None
+    default_llm_provider: Literal["anthropic", "openai", "google"] = "anthropic"
     default_llm_model: str = "claude-sonnet-4-20250514"
 
     # Fingerprints

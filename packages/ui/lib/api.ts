@@ -133,11 +133,13 @@ export interface ChatSession {
   id: string;
   profile_id: string;
   initial_prompt: string;
-  status: 'running' | 'completed' | 'error' | 'cancelled';
+  status: 'running' | 'completed' | 'error' | 'cancelled' | 'awaiting_approval';
   total_tokens: number;
   total_input_tokens: number;
   total_output_tokens: number;
   total_steps: number;
+  max_steps_limit: number;
+  require_approval: boolean;
   created_at: string;
   completed_at: string | null;
   messages: ChatMessage[];
@@ -159,6 +161,88 @@ export interface ChatHistoryResponse {
   sessions: ChatSessionSummary[];
   total_tokens: number;
   total_sessions: number;
+}
+
+// App Install types
+export interface AppInfo {
+  id: string;
+  package: string;
+  name: string;
+  category: string;
+}
+
+export interface AppListResponse {
+  apps: AppInfo[];
+  total: number;
+}
+
+export interface AppBundle {
+  id: string;
+  name: string;
+  description: string;
+  apps: string[];
+  app_count: number;
+}
+
+export interface BundleListResponse {
+  bundles: AppBundle[];
+  total: number;
+}
+
+export interface BundleDetailResponse {
+  id: string;
+  name: string;
+  description: string;
+  apps: AppInfo[];
+}
+
+export interface InstalledApp {
+  id: string;
+  package: string;
+  name: string;
+  category: string;
+  installed: boolean;
+}
+
+export interface InstalledAppsResponse {
+  apps: InstalledApp[];
+  total: number;
+}
+
+export interface AppInstallResult {
+  success: boolean;
+  app: string | null;
+  package: string | null;
+  already_installed: boolean;
+  installed: boolean;
+  install_initiated: boolean;
+  error: string | null;
+}
+
+export interface BundleInstallResult {
+  success: boolean;
+  bundle: string;
+  apps: Array<{
+    app_id: string;
+    success: boolean;
+    already_installed?: boolean;
+    error?: string;
+  }>;
+  success_count: number;
+  fail_count: number;
+  skip_count: number;
+}
+
+export interface AppLaunchResult {
+  success: boolean;
+  app_id: string;
+  package: string | null;
+  error: string | null;
+}
+
+export interface AuroraStatus {
+  installed: boolean;
+  package: string;
 }
 
 // Proxy types
@@ -531,6 +615,75 @@ class ApiClient {
 
   async getChatHistory(profileId: string): Promise<ChatHistoryResponse> {
     return this.request(`/chat/profiles/${profileId}/history`);
+  }
+
+  async continueSession(sessionId: string, additionalSteps: number = 10): Promise<{ message: string; session_id: string; new_max_steps: number }> {
+    return this.request(`/chat/sessions/${sessionId}/continue`, {
+      method: 'POST',
+      body: JSON.stringify({ additional_steps: additionalSteps }),
+    });
+  }
+
+  async cancelSession(sessionId: string): Promise<{ message: string; session_id: string }> {
+    return this.request(`/chat/sessions/${sessionId}/cancel`, {
+      method: 'POST',
+    });
+  }
+
+  // App Install
+  async getAvailableApps(category?: string): Promise<AppListResponse> {
+    const params = category ? `?category=${category}` : '';
+    return this.request(`/apps${params}`);
+  }
+
+  async getAppBundles(): Promise<BundleListResponse> {
+    return this.request('/apps/bundles');
+  }
+
+  async getBundleDetail(bundleId: string): Promise<BundleDetailResponse> {
+    return this.request(`/apps/bundles/${bundleId}`);
+  }
+
+  async getInstalledApps(profileId: string): Promise<InstalledAppsResponse> {
+    return this.request(`/apps/profiles/${profileId}/installed`);
+  }
+
+  async checkAuroraStatus(profileId: string): Promise<AuroraStatus> {
+    return this.request(`/apps/profiles/${profileId}/aurora/status`);
+  }
+
+  async installApp(
+    profileId: string,
+    appId: string,
+    options?: { wait_for_install?: boolean; timeout?: number }
+  ): Promise<AppInstallResult> {
+    return this.request(`/apps/profiles/${profileId}/install/${appId}`, {
+      method: 'POST',
+      body: options ? JSON.stringify(options) : undefined,
+    });
+  }
+
+  async installBundle(
+    profileId: string,
+    bundleId: string,
+    options?: { sequential?: boolean }
+  ): Promise<BundleInstallResult> {
+    return this.request(`/apps/profiles/${profileId}/install/bundle/${bundleId}`, {
+      method: 'POST',
+      body: options ? JSON.stringify(options) : undefined,
+    });
+  }
+
+  async launchApp(profileId: string, appId: string): Promise<AppLaunchResult> {
+    return this.request(`/apps/profiles/${profileId}/launch/${appId}`, {
+      method: 'POST',
+    });
+  }
+
+  async openAppInAurora(profileId: string, appId: string): Promise<{ success: boolean; message: string; app_id: string }> {
+    return this.request(`/apps/profiles/${profileId}/open-aurora/${appId}`, {
+      method: 'POST',
+    });
   }
 
   // Health

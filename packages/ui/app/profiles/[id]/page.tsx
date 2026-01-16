@@ -9,6 +9,7 @@ import { Header } from '@/components/Header';
 import { DeviceViewerWS } from '@/components/DeviceViewerWS';
 import { DeviceControls } from '@/components/DeviceControls';
 import { DeviceChat } from '@/components/DeviceChat';
+import { QuickAppInstallPanel } from '@/components/QuickAppInstallPanel';
 import { SnapshotList } from '@/components/SnapshotList';
 import { CreateSnapshotModal } from '@/components/CreateSnapshotModal';
 import { api, ProfileProxy, Proxy } from '@/lib/api';
@@ -218,6 +219,9 @@ export default function ProfilePage() {
             {/* AI Chat panel */}
             <div className="space-y-6">
               <DeviceChat profileId={profileId} />
+
+              {/* Quick App Install */}
+              <QuickAppInstallPanel profileId={profileId} profileStatus={profile.status} />
 
               {/* Task history */}
               <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">

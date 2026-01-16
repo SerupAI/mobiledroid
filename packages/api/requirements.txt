@@ -37,6 +37,8 @@ Pillow>=10.2.0
 # LLM clients
 anthropic>=0.18.0
 openai>=1.10.0
+litellm>=1.34.0
+google-generativeai>=0.5.0
 
 # Async utilities
 asyncio>=3.4.3

@@ -3,6 +3,12 @@
 Tailscale provides SOCKS5 proxy functionality when connected
 to a tailnet with an exit node. This allows routing container
 traffic through your home network for residential IP addresses.
+
+Architecture:
+    - Tailscale runs in a Docker container (tailscale-proxy)
+    - The container exposes SOCKS5 proxy on port 1055
+    - Android containers route traffic through this proxy
+    - EC2 host keeps its public IP (not affected by exit node)
 """
 
 import asyncio
@@ -20,36 +26,49 @@ from src.connectors.base import (
 
 logger = structlog.get_logger()
 
+# Container mode: Tailscale runs in Docker container
+CONTAINER_MODE = True
+CONTAINER_NAME = "tailscale-proxy"
+
 
 class TailscaleConnector(ProxyConnector):
     """Tailscale exit node connector.
 
-    Routes container traffic through a Tailscale exit node,
-    providing residential IP addresses for better evasion.
+    Routes Android container traffic through a Tailscale exit node,
+    providing residential IP addresses while EC2 keeps its public IP.
+
+    Architecture (Container Mode - Default):
+        - Tailscale runs in tailscale-proxy Docker container
+        - Provides SOCKS5 proxy at tailscale-proxy:1055
+        - Only Android containers use the residential IP
+        - EC2 host maintains its public IP for SSH/API access
 
     Configuration:
-        exit_node: Hostname of the exit node (e.g., "home-pi")
+        exit_node: Hostname of the exit node (e.g., "desktop-tp59f6k")
         tailnet: Optional tailnet name
-        auth_key: Optional auth key for auto-join
+        auth_key: Auth key for container auto-join
+        container_mode: Use Docker container (default: true)
 
     Usage:
-        1. Install Tailscale on the host machine
-        2. Set up an exit node at home (Raspberry Pi, etc.)
-        3. Configure this connector with the exit node hostname
-        4. Enable the connector to route traffic through home IP
+        1. Set up an exit node at home (PC, Raspberry Pi, etc.)
+        2. Generate auth key at admin.tailscale.com/settings/keys
+        3. Set TAILSCALE_AUTH_KEY and TAILSCALE_EXIT_NODE env vars
+        4. Start with: docker compose --profile proxy up -d
     """
 
     id = "tailscale"
     name = "Tailscale Exit Node"
-    description = "Route traffic through your home network via Tailscale"
+    description = "Route Android traffic through your home network via Tailscale"
 
-    # Tailscale SOCKS5 proxy port (when using --socks5-server)
-    SOCKS5_PORT = 1055
+    # Tailscale proxy ports
+    SOCKS5_PORT = 1055  # For apps that support SOCKS5
+    HTTP_PROXY_PORT = 8080  # For Android global proxy (HTTP only)
 
     def __init__(self, config: dict[str, Any] | None = None) -> None:
         super().__init__(config)
         self._exit_node = config.get("exit_node") if config else None
         self._tailnet = config.get("tailnet") if config else None
+        self._container_mode = config.get("container_mode", CONTAINER_MODE) if config else CONTAINER_MODE
 
     @property
     def exit_node(self) -> str | None:
@@ -70,12 +89,83 @@ class TailscaleConnector(ProxyConnector):
             self._tailnet = config["tailnet"]
 
     async def get_status(self) -> ConnectorStatus:
-        """Get Tailscale connection status."""
+        """Get Tailscale connection status.
+
+        In container mode, checks the Docker container status.
+        In host mode, checks the host Tailscale installation.
+        """
+        if self._container_mode:
+            return await self._get_container_status()
+        else:
+            return await self._get_host_status()
+
+    async def _get_container_status(self) -> ConnectorStatus:
+        """Get status of Tailscale Docker container."""
+        try:
+            # Check if container is running
+            result = await self._run_command(
+                f"docker inspect --format='{{{{.State.Running}}}}' {CONTAINER_NAME}"
+            )
+            is_running = result.strip().lower() == "true"
+
+            if not is_running:
+                return ConnectorStatus(
+                    connected=False,
+                    healthy=False,
+                    message="Tailscale container not running. Start with: docker compose --profile proxy up -d",
+                    details={"container_mode": True, "container_name": CONTAINER_NAME}
+                )
+
+            # Get Tailscale status from container
+            result = await self._run_command(
+                f"docker exec {CONTAINER_NAME} tailscale status --json"
+            )
+            status = json.loads(result)
+
+            backend_state = status.get("BackendState", "Unknown")
+            is_connected = backend_state == "Running"
+
+            # Check exit node status
+            exit_node_status = status.get("ExitNodeStatus")
+            current_exit_node = None
+            if exit_node_status:
+                current_exit_node = exit_node_status.get("TailscaleIPs", [None])[0]
+
+            # Get Tailscale IP
+            tailscale_ips = status.get("TailscaleIPs", [])
+            our_ip = tailscale_ips[0] if tailscale_ips else None
+
+            return ConnectorStatus(
+                connected=is_connected,
+                healthy=is_connected and bool(current_exit_node),
+                message=f"Container connected via exit node" if current_exit_node else "Container connected (no exit node)",
+                details={
+                    "container_mode": True,
+                    "container_name": CONTAINER_NAME,
+                    "backend_state": backend_state,
+                    "exit_node": current_exit_node,
+                    "tailscale_ip": our_ip,
+                    "configured_exit_node": self.exit_node,
+                }
+            )
+
+        except Exception as e:
+            logger.error("Failed to get Tailscale container status", error=str(e))
+            return ConnectorStatus(
+                connected=False,
+                healthy=False,
+                message=f"Container error: {str(e)}",
+                details={"container_mode": True}
+            )
+
+    async def _get_host_status(self) -> ConnectorStatus:
+        """Get status of host Tailscale installation (legacy mode)."""
         if not self._is_tailscale_installed():
             return ConnectorStatus(
                 connected=False,
                 healthy=False,
-                message="Tailscale is not installed",
+                message="Tailscale is not installed on host",
+                details={"container_mode": False}
             )
 
         try:
@@ -98,8 +188,9 @@ class TailscaleConnector(ProxyConnector):
             return ConnectorStatus(
                 connected=is_running,
                 healthy=is_running and bool(current_exit_node),
-                message=f"Connected via exit node" if current_exit_node else "Connected (no exit node)",
+                message=f"Host connected via exit node" if current_exit_node else "Host connected (no exit node)",
                 details={
+                    "container_mode": False,
                     "backend_state": backend_state,
                     "exit_node": current_exit_node,
                     "tailscale_ip": our_ip,
@@ -108,11 +199,12 @@ class TailscaleConnector(ProxyConnector):
             )
 
         except Exception as e:
-            logger.error("Failed to get Tailscale status", error=str(e))
+            logger.error("Failed to get Tailscale host status", error=str(e))
             return ConnectorStatus(
                 connected=False,
                 healthy=False,
-                message=f"Error: {str(e)}",
+                message=f"Host error: {str(e)}",
+                details={"container_mode": False}
             )
 
     async def test_connection(self) -> bool:
@@ -121,10 +213,13 @@ class TailscaleConnector(ProxyConnector):
         return status.connected
 
     async def get_proxy_config(self) -> ProxyConfig | None:
-        """Get SOCKS5 proxy configuration for Tailscale.
+        """Get HTTP proxy configuration for Tailscale.
 
-        Note: This requires Tailscale to be running with
-        --socks5-server flag for SOCKS5 proxy support.
+        In container mode, returns the Docker container hostname.
+        Android containers connect to tailscale-proxy:8080 for HTTP proxy.
+
+        Note: Android's global HTTP proxy only supports HTTP, not SOCKS5.
+        The tailscale-proxy container runs both SOCKS5 (1055) and HTTP (8080) proxies.
         """
         if not self.is_enabled:
             return None
@@ -134,12 +229,20 @@ class TailscaleConnector(ProxyConnector):
             logger.warning("Tailscale not connected, cannot provide proxy")
             return None
 
-        # Return SOCKS5 proxy config
-        # Traffic flows: Container -> SOCKS5 -> Tailscale -> Exit Node -> Internet
+        # Determine proxy host based on mode
+        if self._container_mode:
+            # Use Docker container name (containers on same network)
+            proxy_host = CONTAINER_NAME
+        else:
+            # Use host.docker.internal for host-mode Tailscale
+            proxy_host = "host.docker.internal"
+
+        # Return HTTP proxy config (Android's global proxy only supports HTTP)
+        # Traffic flows: Android Container -> HTTP Proxy -> Tailscale Container -> Exit Node -> Internet
         return ProxyConfig(
-            type="socks5",
-            host="host.docker.internal",  # Access host from container
-            port=self.SOCKS5_PORT,
+            type="http",
+            host=proxy_host,
+            port=self.HTTP_PROXY_PORT,
             enabled=True,
         )
 

@@ -11,6 +11,8 @@ from src.routers.debug import router as debug_router
 from src.routers.settings import router as settings_router
 from src.routers.proxies import router as proxies_router
 from src.routers.connectors import router as connectors_router
+from src.routers.admin import router as admin_router
+from src.routers.apps import router as apps_router
 
 __all__ = [
     "profiles_router",
@@ -24,4 +26,6 @@ __all__ = [
     "settings_router",
     "proxies_router",
     "connectors_router",
+    "admin_router",
+    "apps_router",
 ]

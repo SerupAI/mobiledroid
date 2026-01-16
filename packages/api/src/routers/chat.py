@@ -46,6 +46,8 @@ async def create_chat_session(
     db: AsyncSession,
     profile_id: str,
     initial_prompt: str,
+    max_steps_limit: int = 50,
+    require_approval: bool = True,
 ) -> ChatSessionModel:
     """Create a new chat session in the database."""
     session = ChatSessionModel(
@@ -53,6 +55,8 @@ async def create_chat_session(
         profile_id=profile_id,
         initial_prompt=initial_prompt,
         status="active",
+        max_steps_limit=max_steps_limit,
+        require_approval=require_approval,
     )
     db.add(session)
     await db.commit()
@@ -119,7 +123,13 @@ async def update_chat_session_totals(
 class ChatMessage(BaseModel):
     """Chat message request."""
     message: str
-    max_steps: int = 50  # Increased from 20
+    max_steps: int = 50  # Default max steps per execution
+    require_approval_on_limit: bool = True  # Pause for approval when limit reached
+
+
+class ChatContinueRequest(BaseModel):
+    """Request to continue a paused chat session."""
+    additional_steps: int = 10  # Additional steps to allow
 
 
 class ChatResponse(BaseModel):
@@ -128,6 +138,8 @@ class ChatResponse(BaseModel):
     response: str
     steps_taken: int = 0
     error: str | None = None
+    session_id: str | None = None  # Include session ID for continue support
+    awaiting_approval: bool = False  # Whether session is paused for approval
 
 
 async def get_profile_service(
@@ -198,12 +210,14 @@ async def chat_with_device(
         agent = await MobileDroidAgent.connect(
             host=host,
             port=int(port),
-            anthropic_api_key=chat_config.api_key,
+            api_key=chat_config.api_key,
             config=AgentConfig(
                 max_steps=chat_message.max_steps,
                 llm_model=chat_config.model_name,
+                llm_provider=chat_config.provider_name,
                 temperature=chat_config.temperature,
             ),
+            provider_name=chat_config.provider_name,
         )
 
         # Execute the task with step tracking
@@ -411,7 +425,9 @@ async def _chat_event_generator_with_cancellation(
     agent: MobileDroidAgent,
     session_key: str,
     chat_session_id: str,
-    debug: bool = False
+    debug: bool = False,
+    require_approval: bool = True,
+    max_steps_limit: int = 50,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events for chat streaming with cancellation support and persistence."""
     from src.db import AsyncSessionLocal
@@ -471,19 +487,55 @@ async def _chat_event_generator_with_cancellation(
                 # Check if this is the completion event
                 if event.get('type') == 'complete':
                     total_tokens = event.get('total_tokens', total_tokens)
-                    # Save completion message
-                    try:
-                        async with AsyncSessionLocal() as db:
-                            await save_chat_message(
-                                db=db,
-                                session_id=chat_session_id,
-                                role=ChatMessageRole.ASSISTANT,
-                                content=event.get('message', 'Task completed'),
-                                cumulative_tokens=total_tokens,
-                            )
-                    except Exception as e:
-                        logger.error("Failed to save completion message", error=str(e))
-                    break
+                    event_message = event.get('message', '')
+
+                    # Check if max_steps was reached and approval is required
+                    is_max_steps_reached = (
+                        not event.get('success', True) and
+                        'did not complete within' in event_message.lower()
+                    )
+
+                    if is_max_steps_reached and require_approval:
+                        # Emit approval_required event instead of complete
+                        final_status = "awaiting_approval"
+                        approval_event = {
+                            'type': 'approval_required',
+                            'session_id': chat_session_id,
+                            'steps_taken': step_count,
+                            'max_steps': max_steps_limit,
+                            'total_tokens': total_tokens,
+                            'message': f'Task reached step limit ({max_steps_limit} steps). Allow more steps to continue?',
+                        }
+                        yield f"data: {json.dumps(approval_event)}\n\n"
+
+                        # Save paused state message
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                await save_chat_message(
+                                    db=db,
+                                    session_id=chat_session_id,
+                                    role=ChatMessageRole.SYSTEM,
+                                    content=f'Task paused at step {step_count}. Awaiting approval for more steps.',
+                                    cumulative_tokens=total_tokens,
+                                )
+                        except Exception as e:
+                            logger.error("Failed to save pause message", error=str(e))
+                        break
+                    else:
+                        # Normal completion (success or failure without approval)
+                        # Save completion message
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                await save_chat_message(
+                                    db=db,
+                                    session_id=chat_session_id,
+                                    role=ChatMessageRole.ASSISTANT,
+                                    content=event.get('message', 'Task completed'),
+                                    cumulative_tokens=total_tokens,
+                                )
+                        except Exception as e:
+                            logger.error("Failed to save completion message", error=str(e))
+                        break
 
             except asyncio.TimeoutError:
                 # Send heartbeat to keep connection alive
@@ -577,12 +629,14 @@ async def chat_with_profile_stream(
         agent = await MobileDroidAgent.connect(
             host=host,
             port=int(port),
-            anthropic_api_key=chat_config.api_key,
+            api_key=chat_config.api_key,
             config=AgentConfig(
                 max_steps=chat_message.max_steps,
                 llm_model=chat_config.model_name,
+                llm_provider=chat_config.provider_name,
                 temperature=chat_config.temperature,
             ),
+            provider_name=chat_config.provider_name,
         )
         
         # Create session key and register task for cancellation
@@ -595,11 +649,13 @@ async def chat_with_profile_stream(
                 old_task.cancel()
             del active_sessions[session_key]
 
-        # Create chat session in database
+        # Create chat session in database with approval settings
         chat_session = await create_chat_session(
             db=db,
             profile_id=profile_id,
             initial_prompt=chat_message.message,
+            max_steps_limit=chat_message.max_steps,
+            require_approval=chat_message.require_approval_on_limit,
         )
 
         # Save user message
@@ -610,7 +666,7 @@ async def chat_with_profile_stream(
             content=chat_message.message,
         )
 
-        # Return streaming response with cancellation support
+        # Return streaming response with cancellation and approval support
         return StreamingResponse(
             _chat_event_generator_with_cancellation(
                 profile_id=profile_id,
@@ -619,6 +675,8 @@ async def chat_with_profile_stream(
                 session_key=session_key,
                 chat_session_id=chat_session.id,
                 debug=settings.debug,
+                require_approval=chat_message.require_approval_on_limit,
+                max_steps_limit=chat_message.max_steps,
             ),
             media_type="text/event-stream"
         )
@@ -632,7 +690,7 @@ async def chat_with_profile_stream(
 async def stop_chat(profile_id: str):
     """Stop the active chat session for a profile."""
     session_key = f"chat_{profile_id}"
-    
+
     if session_key in active_sessions:
         task = active_sessions[session_key]
         if not task.done():
@@ -644,8 +702,158 @@ async def stop_chat(profile_id: str):
                 pass
         del active_sessions[session_key]
         return {"success": True, "message": "Chat session stopped"}
-    
+
     return {"success": False, "message": "No active chat session found"}
+
+
+@router.post("/sessions/{session_id}/continue")
+async def continue_chat_session(
+    session_id: str,
+    continue_request: ChatContinueRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Continue a paused chat session with additional steps.
+
+    This endpoint resumes a chat session that was paused when it reached
+    its step limit. The task continues from where it left off.
+    """
+    # Get the session
+    result = await db.execute(
+        select(ChatSessionModel).where(ChatSessionModel.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    if session.status != "awaiting_approval":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session is not awaiting approval (status: {session.status})"
+        )
+
+    # Get profile service
+    fingerprint_service = get_fingerprint_service()
+    docker_service = DockerService(fingerprint_service)
+    adb_service = ADBService()
+    profile_service = ProfileService(db, docker_service, adb_service)
+
+    # Get profile
+    profile = await profile_service.get(session.profile_id)
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    if profile.status != ProfileStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Profile must be running to continue chat")
+
+    # Get ADB address
+    container_name = f"mobiledroid-{session.profile_id}"
+    adb_address = f"{container_name}:5555"
+
+    # Get LLM configuration
+    integration_service = IntegrationService(db)
+    chat_config = await integration_service.get_chat_config()
+    if not chat_config:
+        raise HTTPException(status_code=500, detail="Chat not configured")
+
+    # Connect to device and create agent with new step limit
+    host, port = adb_address.split(":")
+    new_max_steps = continue_request.additional_steps
+    agent = await MobileDroidAgent.connect(
+        host=host,
+        port=int(port),
+        api_key=chat_config.api_key,
+        config=AgentConfig(
+            max_steps=new_max_steps,
+            llm_model=chat_config.model_name,
+            llm_provider=chat_config.provider_name,
+            temperature=chat_config.temperature,
+        ),
+        provider_name=chat_config.provider_name,
+    )
+
+    # Update session with new max_steps limit (cumulative)
+    session.max_steps_limit = session.total_steps + new_max_steps
+    session.status = "active"
+    await db.commit()
+
+    # Create session key
+    session_key = f"chat_{session.profile_id}"
+
+    # Clean up any existing session
+    if session_key in active_sessions:
+        old_task = active_sessions[session_key]
+        if not old_task.done():
+            old_task.cancel()
+        del active_sessions[session_key]
+
+    # Save system message about continuation
+    await save_chat_message(
+        db=db,
+        session_id=session.id,
+        role=ChatMessageRole.SYSTEM,
+        content=f"Continuing task with {new_max_steps} additional steps...",
+    )
+
+    # Return streaming response for continuation
+    return StreamingResponse(
+        _chat_event_generator_with_cancellation(
+            profile_id=session.profile_id,
+            message=session.initial_prompt,  # Continue with original task
+            agent=agent,
+            session_key=session_key,
+            chat_session_id=session.id,
+            debug=settings.debug,
+            require_approval=session.require_approval,
+            max_steps_limit=new_max_steps,
+        ),
+        media_type="text/event-stream"
+    )
+
+
+@router.post("/sessions/{session_id}/cancel")
+async def cancel_paused_session(
+    session_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Cancel a paused chat session that was awaiting approval.
+
+    Use this when you don't want to continue a task that reached its step limit.
+    """
+    # Get the session
+    result = await db.execute(
+        select(ChatSessionModel).where(ChatSessionModel.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    if session.status != "awaiting_approval":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session is not awaiting approval (status: {session.status})"
+        )
+
+    # Update session status
+    session.status = "cancelled"
+    session.completed_at = datetime.utcnow()
+    await db.commit()
+
+    # Save cancellation message
+    await save_chat_message(
+        db=db,
+        session_id=session.id,
+        role=ChatMessageRole.SYSTEM,
+        content="Task cancelled by user (step limit not extended).",
+    )
+
+    return {
+        "success": True,
+        "message": "Chat session cancelled",
+        "session_id": session_id,
+    }
 
 
 @router.get("/profiles/{profile_id}/history", response_model=ChatHistoryResponse)

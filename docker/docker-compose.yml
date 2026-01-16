@@ -114,6 +114,38 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Tailscale proxy for residential IP routing (optional)
+  # Runs Tailscale in a container with exit node, provides SOCKS5 proxy for Android containers
+  # Only Android traffic uses the residential IP; EC2 keeps its public IP
+  tailscale-proxy:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-proxy
+    hostname: tailscale-proxy
+    environment:
+      # Auth key for automatic Tailscale login (generate at admin.tailscale.com/settings/keys)
+      - TS_AUTHKEY=${TAILSCALE_AUTH_KEY:-}
+      # Exit node to route traffic through (e.g., your home device name)
+      - TS_EXTRA_ARGS=--exit-node=${TAILSCALE_EXIT_NODE:-} --accept-routes
+      # Run in userspace mode (no kernel module required)
+      - TS_USERSPACE=true
+      # Enable SOCKS5 proxy on port 1055
+      - TS_SOCKS5_SERVER=:1055
+      # Enable HTTP proxy on port 8080 (for Android global proxy setting)
+      - TS_OUTBOUND_HTTP_PROXY_LISTEN=:8080
+      # State directory
+      - TS_STATE_DIR=/var/lib/tailscale
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      - mobiledroid_network
+    restart: unless-stopped
+    profiles:
+      - proxy  # Only start when explicitly enabled: docker compose --profile proxy up
+
   # ws-scrcpy for web-based device viewing (disabled for now)
   # ws-scrcpy:
   #   image: node:20-alpine
@@ -136,3 +168,4 @@ volumes:
   postgres_data:
   redis_data:
   ws-scrcpy-data:
+  tailscale_state:

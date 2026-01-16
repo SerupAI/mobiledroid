@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Send, Loader2, AlertCircle, Square, RefreshCw, Repeat, Edit3, History, X, ChevronRight, DollarSign } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Square, RefreshCw, Repeat, Edit3, History, X, ChevronRight, DollarSign, PlayCircle, XCircle, ToggleLeft, ToggleRight } from 'lucide-react';
 import { api, ChatSession, ChatMessage as ApiChatMessage } from '@/lib/api';
 
 interface DeviceChatProps {
@@ -9,13 +9,16 @@ interface DeviceChatProps {
 }
 
 interface ChatMessage {
-  type: 'user' | 'assistant' | 'error' | 'thinking' | 'step' | 'cancelled';
+  type: 'user' | 'assistant' | 'error' | 'thinking' | 'step' | 'cancelled' | 'approval_required';
   message: string;
   timestamp: Date;
   details?: string;
   stepNumber?: number;
   screenshot?: string;  // Base64 screenshot
   tokens?: number;  // Token count (cumulative for steps, total for complete)
+  sessionId?: string;  // For approval flow
+  stepsTaken?: number;  // Steps taken when approval requested
+  maxSteps?: number;  // Max steps limit when approval requested
 }
 
 interface ChatSessionSummary {
@@ -68,6 +71,16 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [awaitingApproval, setAwaitingApproval] = useState<{ sessionId: string; stepsTaken: number; maxSteps: number } | null>(null);
+  const [requireApproval, setRequireApproval] = useState(() => {
+    // Load from localStorage, default to true
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('deviceChat_requireApproval');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+  const [isContinuing, setIsContinuing] = useState(false);
   const hasLoadedInitialSession = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +95,11 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
   useEffect(() => {
     localStorage.setItem('deviceChat_maxSteps', maxSteps.toString());
   }, [maxSteps]);
+
+  // Persist requireApproval to localStorage
+  useEffect(() => {
+    localStorage.setItem('deviceChat_requireApproval', requireApproval.toString());
+  }, [requireApproval]);
 
   // Load most recent session on mount
   useEffect(() => {
@@ -251,6 +269,79 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
     setLastUserMessage('');
     setWasStoppedByUser(false);
     setCurrentSessionId(null); // Start fresh session
+    setAwaitingApproval(null);
+  };
+
+  const continueSession = async (additionalSteps: number = 10) => {
+    if (!awaitingApproval) return;
+
+    setIsContinuing(true);
+    try {
+      const response = await fetch(`/api/chat/sessions/${awaitingApproval.sessionId}/continue`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ additional_steps: additionalSteps }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to continue session');
+      }
+
+      const data = await response.json();
+
+      // Remove the approval_required message and add a continuation message
+      setChatHistory(prev => {
+        const filtered = prev.filter(m => m.type !== 'approval_required');
+        return [...filtered, {
+          type: 'assistant',
+          message: `Continuing with ${additionalSteps} more steps...`,
+          timestamp: new Date(),
+        }];
+      });
+
+      setAwaitingApproval(null);
+
+      // Re-run the task with the last user message
+      if (lastUserMessage) {
+        await sendMessageWithStream(lastUserMessage);
+      }
+    } catch (error) {
+      console.error('Failed to continue session:', error);
+      setChatHistory(prev => [...prev, {
+        type: 'error',
+        message: 'Failed to continue session. Please try again.',
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setIsContinuing(false);
+    }
+  };
+
+  const cancelSession = async () => {
+    if (!awaitingApproval) return;
+
+    try {
+      const response = await fetch(`/api/chat/sessions/${awaitingApproval.sessionId}/cancel`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to cancel session');
+      }
+
+      // Update the approval_required message to cancelled
+      setChatHistory(prev => prev.map(m =>
+        m.type === 'approval_required'
+          ? { ...m, type: 'cancelled' as const, message: 'Session cancelled by user' }
+          : m
+      ));
+
+      setAwaitingApproval(null);
+    } catch (error) {
+      console.error('Failed to cancel session:', error);
+    }
   };
 
   const repeatLastMessage = async () => {
@@ -277,7 +368,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message, max_steps: maxSteps }),
+        body: JSON.stringify({ message, max_steps: maxSteps, require_approval_on_limit: requireApproval }),
       });
       
       if (!response.ok) {
@@ -367,6 +458,25 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
                   }];
                 });
                 break; // Exit the loop when cancelled
+              } else if (event.type === 'approval_required') {
+                // Task paused for step limit approval
+                setAwaitingApproval({
+                  sessionId: event.session_id,
+                  stepsTaken: event.steps_taken,
+                  maxSteps: event.max_steps,
+                });
+                setChatHistory(prev => {
+                  const filtered = prev.filter(m => m.type !== 'thinking');
+                  return [...filtered, {
+                    type: 'approval_required',
+                    message: event.message,
+                    timestamp: new Date(),
+                    tokens: event.total_tokens,
+                    sessionId: event.session_id,
+                    stepsTaken: event.steps_taken,
+                    maxSteps: event.max_steps,
+                  }];
+                });
               } else if (event.type === 'complete') {
                 setChatHistory(prev => {
                   // Remove any thinking messages
@@ -491,7 +601,7 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
       {/* Debug Controls */}
       {process.env.NEXT_PUBLIC_DEBUG === 'true' && (
         <div className="px-4 py-2 border-b border-gray-800 bg-gray-950">
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-4 text-sm flex-wrap">
             <label className="flex items-center gap-2 text-gray-400">
               Max Steps:
               <input
@@ -504,6 +614,23 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
                 disabled={isStreaming}
               />
             </label>
+            <button
+              onClick={() => setRequireApproval(!requireApproval)}
+              disabled={isStreaming}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                requireApproval
+                  ? 'bg-primary-600/20 text-primary-400 border border-primary-600/50'
+                  : 'bg-gray-700/50 text-gray-400 border border-gray-600/50'
+              } disabled:opacity-50`}
+              title={requireApproval ? "Click to disable step limit approval" : "Click to enable step limit approval"}
+            >
+              {requireApproval ? (
+                <ToggleRight className="h-3.5 w-3.5" />
+              ) : (
+                <ToggleLeft className="h-3.5 w-3.5" />
+              )}
+              Approval
+            </button>
             <label className="flex items-center gap-2 text-gray-400">
               Chat Height:
               <input
@@ -572,9 +699,10 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
                         session.status === 'completed' ? 'bg-green-900/50 text-green-400' :
                         session.status === 'error' ? 'bg-red-900/50 text-red-400' :
                         session.status === 'cancelled' ? 'bg-orange-900/50 text-orange-400' :
+                        session.status === 'awaiting_approval' ? 'bg-yellow-900/50 text-yellow-400' :
                         'bg-gray-700 text-gray-400'
                       }`}>
-                        {session.status}
+                        {session.status === 'awaiting_approval' ? 'paused' : session.status}
                       </span>
                       <div className="text-right">
                         <p className="text-xs text-gray-400">
@@ -637,11 +765,16 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
                     ? 'bg-red-900/20 text-red-400 border border-red-800'
                     : item.type === 'cancelled'
                     ? 'bg-orange-900/20 text-orange-400 border border-orange-800'
+                    : item.type === 'approval_required'
+                    ? 'bg-yellow-900/20 text-yellow-300 border border-yellow-700'
                     : 'bg-gray-800 text-gray-200'
                 }`}
               >
                 {item.type === 'error' && (
                   <AlertCircle className="h-4 w-4 inline-block mr-1" />
+                )}
+                {item.type === 'approval_required' && (
+                  <AlertCircle className="h-4 w-4 inline-block mr-1 text-yellow-400" />
                 )}
                 <p className="text-sm whitespace-pre-wrap">{item.message}</p>
                 {item.details && (
@@ -649,12 +782,44 @@ export function DeviceChat({ profileId }: DeviceChatProps) {
                 )}
                 {item.screenshot && (
                   <div className="mt-2">
-                    <img 
+                    <img
                       src={`data:image/png;base64,${item.screenshot}`}
                       alt="Screenshot"
                       className="max-w-full h-auto rounded border border-gray-600"
                       style={{ maxHeight: '200px' }}
                     />
+                  </div>
+                )}
+                {/* Approval buttons */}
+                {item.type === 'approval_required' && awaitingApproval && (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => continueSession(10)}
+                      disabled={isContinuing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md transition-colors disabled:opacity-50"
+                    >
+                      {isContinuing ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PlayCircle className="h-3.5 w-3.5" />
+                      )}
+                      Allow +10 Steps
+                    </button>
+                    <button
+                      onClick={() => continueSession(25)}
+                      disabled={isContinuing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/70 hover:bg-green-700/70 text-white text-sm rounded-md transition-colors disabled:opacity-50"
+                    >
+                      +25
+                    </button>
+                    <button
+                      onClick={cancelSession}
+                      disabled={isContinuing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-md transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="h-3.5 w-3.5" />
+                      Cancel
+                    </button>
                   </div>
                 )}
                 <div className="flex justify-between items-center text-xs opacity-60 mt-1">

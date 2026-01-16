@@ -87,28 +87,47 @@ class ProfileService:
         profile_id: str,
         data: ProfileUpdate,
     ) -> Profile | None:
-        """Update a profile."""
+        """Update a profile.
+
+        Proxy changes are allowed on running profiles and are hot-applied.
+        Non-proxy changes (name, fingerprint) are blocked on running profiles.
+        """
         profile = await self.get(profile_id)
         if not profile:
             return None
 
-        if profile.status == ProfileStatus.RUNNING:
-            raise ValueError("Cannot update a running profile")
+        is_running = profile.status == ProfileStatus.RUNNING
+        proxy_changed = False
 
+        # Check for non-proxy changes on running profile
+        if is_running:
+            if data.name is not None or data.fingerprint is not None:
+                raise ValueError("Cannot update name or fingerprint on a running profile")
+
+        # Apply changes
         if data.name is not None:
             profile.name = data.name
         if data.fingerprint is not None:
             profile.fingerprint = data.fingerprint.model_dump()
         if data.proxy is not None:
             profile.proxy = data.proxy.model_dump()
+            proxy_changed = True
         if data.proxy_connector_id is not None:
             # Allow clearing by setting to empty string
+            old_connector = profile.proxy_connector_id
             profile.proxy_connector_id = data.proxy_connector_id if data.proxy_connector_id else None
+            if old_connector != profile.proxy_connector_id:
+                proxy_changed = True
 
         await self.db.flush()
         await self.db.refresh(profile)
 
-        logger.info("Updated profile", profile_id=profile_id)
+        # Hot-apply proxy changes to running profile
+        if is_running and proxy_changed:
+            logger.info("Hot-applying proxy change to running profile", profile_id=profile_id)
+            await self._apply_proxy_settings(profile)
+
+        logger.info("Updated profile", profile_id=profile_id, proxy_changed=proxy_changed)
         return profile
 
     async def delete(self, profile_id: str) -> bool:
@@ -507,6 +526,18 @@ class ProfileService:
 
         adb_addr = self._get_adb_address(profile)
 
+        # Ensure ADB is connected before applying proxy
+        # ADB connections can time out, so we reconnect first
+        container_name = f"mobiledroid-{profile.id}"
+        connected = await self.adb.connect(container_name, 5555, timeout=10)
+        if not connected:
+            logger.error(
+                "Failed to connect ADB before applying proxy",
+                profile_id=profile.id,
+                address=adb_addr,
+            )
+            return False
+
         try:
             success = await self.adb.set_proxy(
                 address=adb_addr,
@@ -559,4 +590,97 @@ class ProfileService:
             await self._apply_proxy_settings(profile)
 
         logger.info("Updated proxy settings", profile_id=profile_id, proxy_type=proxy.get("type"))
+        return profile
+
+    async def get_proxy_status(self, profile_id: str) -> dict[str, Any] | None:
+        """Get current proxy status for a profile.
+
+        Returns both the configured proxy and what's actually applied on the device.
+        """
+        profile = await self.get(profile_id)
+        if not profile:
+            return None
+
+        result = {
+            "profile_id": profile_id,
+            "profile_status": profile.status.value,
+            "connector_id": profile.proxy_connector_id,
+            "configured_proxy": profile.proxy,
+            "applied_proxy": None,
+            "match": None,
+        }
+
+        # Get configured proxy from connector if set
+        if profile.proxy_connector_id:
+            try:
+                from src.connectors import connector_registry
+                from src.connectors.base import ProxyConnector
+
+                connector = connector_registry.get(profile.proxy_connector_id)
+                if connector and isinstance(connector, ProxyConnector) and connector.is_enabled:
+                    proxy_config = await connector.get_proxy_config()
+                    if proxy_config:
+                        result["configured_proxy"] = {
+                            "type": proxy_config.type,
+                            "host": proxy_config.host,
+                            "port": proxy_config.port,
+                            "username": proxy_config.username,
+                        }
+            except Exception as e:
+                logger.warning("Failed to get connector proxy config", error=str(e))
+
+        # Get what's actually applied on device (only if running)
+        if profile.status == ProfileStatus.RUNNING:
+            adb_addr = self._get_adb_address(profile)
+
+            # Ensure ADB is connected (connections can time out)
+            container_name = f"mobiledroid-{profile.id}"
+            await self.adb.connect(container_name, 5555, timeout=10)
+
+            try:
+                applied = await self.adb.get_proxy(adb_addr)
+                result["applied_proxy"] = applied
+
+                # Check if configured matches applied
+                configured = result["configured_proxy"] or {}
+                if applied and configured:
+                    result["match"] = (
+                        applied.get("type") == configured.get("type", "none") and
+                        applied.get("host") == configured.get("host") and
+                        applied.get("port") == configured.get("port")
+                    )
+                elif not applied and not configured.get("host"):
+                    result["match"] = True  # Both are "none"
+                else:
+                    result["match"] = False
+            except Exception as e:
+                logger.warning("Failed to get device proxy status", error=str(e))
+
+        return result
+
+    async def clear_proxy(self, profile_id: str) -> Profile | None:
+        """Clear proxy settings from a profile.
+
+        If the profile is running, removes the proxy immediately.
+        """
+        profile = await self.get(profile_id)
+        if not profile:
+            return None
+
+        # Clear both connector and manual proxy
+        profile.proxy_connector_id = None
+        profile.proxy = {"type": "none"}
+        await self.db.flush()
+        await self.db.refresh(profile)
+
+        # If running, clear proxy on device
+        if profile.status == ProfileStatus.RUNNING:
+            # Ensure ADB is connected (connections can time out)
+            container_name = f"mobiledroid-{profile.id}"
+            await self.adb.connect(container_name, 5555, timeout=10)
+
+            adb_addr = self._get_adb_address(profile)
+            await self.adb.clear_proxy(adb_addr)
+            logger.info("Cleared proxy from running device", profile_id=profile_id)
+
         return profile

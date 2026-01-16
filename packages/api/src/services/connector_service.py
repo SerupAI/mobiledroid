@@ -43,9 +43,11 @@ class ConnectorService:
 
     def _register_builtin_connectors(self) -> None:
         """Register built-in connector implementations."""
-        # Tailscale connector
+        # Tailscale connector - enabled by default if container is available
         if not connector_registry.get("tailscale"):
-            connector_registry.register(TailscaleConnector())
+            tailscale = TailscaleConnector()
+            tailscale.enable()  # Enable by default
+            connector_registry.register(tailscale)
 
         # Future: Register other built-in connectors
         # connector_registry.register(BrightDataConnector())

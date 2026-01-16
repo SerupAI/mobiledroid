@@ -21,6 +21,8 @@ from src.routers import (
     settings_router,
     proxies_router,
     connectors_router,
+    admin_router,
+    apps_router,
 )
 
 # Configure structured logging
@@ -76,18 +78,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Failed to initialize Redis/task queue", error=str(e))
 
-    # Seed initial data
+    # Seed initial data (idempotent - skips if already seeded)
     try:
         from src.db.session import AsyncSessionLocal
         from src.services.seed_service import SeedService
 
         async with AsyncSessionLocal() as db:
             seed_service = SeedService(db)
-            await seed_service.seed_initial_data()
+            await seed_service.seed_initial_data(force=False)
 
-        logger.info("Initial data seeded")
+        logger.info("Seed check completed")
     except Exception as e:
-        logger.warning("Failed to seed initial data", error=str(e))
+        # Log error but don't fail startup - seed can be retried via /admin/seed
+        logger.error("Failed to seed initial data", error=str(e))
 
     # Initialize service connectors
     try:
@@ -169,6 +172,8 @@ app.include_router(debug_router)
 app.include_router(settings_router)
 app.include_router(proxies_router)
 app.include_router(connectors_router)
+app.include_router(admin_router)
+app.include_router(apps_router)
 
 
 # Health check endpoint

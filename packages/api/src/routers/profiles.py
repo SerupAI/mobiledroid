@@ -220,6 +220,28 @@ async def check_device_ready(
     return ready_status
 
 
+@router.get("/{profile_id}/proxy")
+async def get_profile_proxy_status(
+    profile_id: str,
+    service: Annotated[ProfileService, Depends(get_profile_service)],
+):
+    """Get current proxy status for a profile.
+
+    Returns:
+        - connector_id: The proxy connector being used (if any)
+        - configured_proxy: The proxy configuration (from connector or manual)
+        - applied_proxy: What's actually set on the device (if running)
+        - match: Whether configured and applied proxies match
+    """
+    proxy_status = await service.get_proxy_status(profile_id)
+    if proxy_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile {profile_id} not found",
+        )
+    return proxy_status
+
+
 @router.patch("/{profile_id}/proxy", response_model=ProfileResponse)
 async def update_profile_proxy(
     profile_id: str,
@@ -232,6 +254,24 @@ async def update_profile_proxy(
     HTTP proxies are natively supported. SOCKS5 proxies require additional setup.
     """
     profile = await service.update_proxy(profile_id, proxy.model_dump())
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile {profile_id} not found",
+        )
+    return ProfileResponse.model_validate(profile)
+
+
+@router.delete("/{profile_id}/proxy", response_model=ProfileResponse)
+async def clear_profile_proxy(
+    profile_id: str,
+    service: Annotated[ProfileService, Depends(get_profile_service)],
+) -> ProfileResponse:
+    """Clear proxy settings from a profile.
+
+    If the profile is running, removes the proxy immediately.
+    """
+    profile = await service.clear_proxy(profile_id)
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
