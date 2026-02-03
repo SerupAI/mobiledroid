@@ -73,7 +73,10 @@
       "Bash(ping:*)",
       "Bash(nc -zv -w 5 100.122.30.80 3100:*)",
       "Bash(nc:*)",
-      "Bash(time curl:*)"
+      "Bash(time curl:*)",
+      "WebFetch(domain:openclaw.ai)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.bytebot.ai)"
     ]
   }
 }

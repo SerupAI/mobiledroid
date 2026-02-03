@@ -1,9 +1,44 @@
 # MobileDroid
 
-Self-hosted AI-powered Android device automation platform. Control Android emulators via natural language with multi-profile antidetect support.
+> **"ByteBot gave AI its own computer. MobileDroid gives AI its own phone."**
 
+Self-hosted AI mobile agent for Android automation — the mobile equivalent of [ByteBot](https://github.com/bytebot-ai/bytebot). Control Android devices via natural language with multi-profile antidetect support.
+
+[![GitHub stars](https://img.shields.io/github/stars/serup-ai/mobiledroid?style=social)](https://github.com/serup-ai/mobiledroid)
 [![Discord](https://img.shields.io/badge/Discord-Join_Server-7289da?logo=discord&logoColor=white)](https://discord.gg/rP5PAjG3jx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Why MobileDroid?
+
+**60%+ of web traffic is mobile**, yet most AI automation tools only work on desktop. MobileDroid fills that gap.
+
+| Challenge | MobileDroid Solution |
+|-----------|---------------------|
+| Mobile-only apps (Instagram, TikTok, banking) | AI controls real Android apps |
+| Account bans from browser automation | Device fingerprinting + residential IPs |
+| Expensive SaaS antidetect tools ($50-500/mo) | Self-hosted, open source, free |
+| No mobile RPA options | Full Android automation via natural language |
+
+### Who It's For
+
+- **Social Media Managers** — Automate mobile-only features (Stories, Reels, DMs)
+- **QA & Testing Teams** — Parallel automated mobile testing
+- **Growth Hackers** — Scale mobile workflows without detection
+- **Researchers** — Extract data from mobile apps programmatically
+- **RPA Developers** — Mobile automation that UiPath can't do
+
+### MobileDroid vs ByteBot
+
+| Feature | ByteBot | MobileDroid |
+|---------|---------|-------------|
+| Platform | Linux Desktop | Android Mobile |
+| Container | Docker + Ubuntu | Docker + Redroid |
+| AI Backend | Claude, GPT, Gemini | Claude, GPT, Gemini (LiteLLM) |
+| Use Cases | Desktop RPA, web scraping | Mobile automation, app testing |
+| Anti-detect | ❌ | ✅ Device fingerprinting |
+| Residential IP | ❌ | ✅ Tailscale home proxy |
+| Self-hosted | ✅ | ✅ |
+| License | Apache 2.0 | MIT |
 
 ## One-Click Deploy
 
