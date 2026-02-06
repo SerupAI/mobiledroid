@@ -29,6 +29,7 @@
 ### AI Agent
 - [ ] Agent memory/context persistence
 - [ ] Agent skill library (reusable sequences)
+- [ ] Learned automations (AI generates scripts, auto-heals on failure)
 - [ ] Agent scheduling (cron-based)
 - [ ] Multi-agent orchestration
 - [ ] Agent task queue with monitoring
@@ -42,7 +43,7 @@
 - [ ] Proxy pool management API
 - [ ] Hot-swap proxy (no restart)
 
-### Antidetect (GeeLark Parity)
+### Antidetect Hardening
 - [ ] Sensor spoofing (accelerometer, gyroscope, magnetometer)
 - [ ] IMEI / hardware ID spoofing
 - [ ] GSF ID / Google Advertising ID
