@@ -4,6 +4,8 @@
 
 Self-hosted AI mobile agent for Android automation — the mobile equivalent of [ByteBot](https://github.com/bytebot-ai/bytebot). Control Android devices via natural language with multi-profile antidetect support.
 
+![MobileDroid Demo](demo.gif)
+
 [![GitHub stars](https://img.shields.io/github/stars/SerupAI/mobiledroid?style=social)](https://github.com/SerupAI/mobiledroid)
 [![Discord](https://img.shields.io/badge/Discord-Join_Server-7289da?logo=discord&logoColor=white)](https://discord.gg/rP5PAjG3jx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
