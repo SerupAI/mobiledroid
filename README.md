@@ -63,6 +63,14 @@ For more regions and detailed instructions, see [deploy/README.md](deploy/README
 - **Web-Based Control**: View and interact with devices via browser
 - **Self-Hostable**: Docker, Docker Compose, Kubernetes support
 
+## Cloud Version
+
+Want managed infrastructure without the setup? [Join the MobileDroid Cloud waitlist](https://mobiledroid-waitlist.conclusive-digital.workers.dev/?utm_source=github&utm_medium=readme&utm_campaign=oss) for early access.
+
+## Roadmap
+
+See what's coming next: **[ROADMAP.md](ROADMAP.md)**
+
 ## Quick Start
 
 ### Prerequisites
