@@ -55,6 +55,7 @@
 - [ ] SIM serial / network operator
 
 ### Integrations
+- [ ] n8n node (workflow automation integration)
 - [ ] OpenClaw (local LLM support)
 - [ ] Claude Code skills.md
 - [ ] Webhook notifications
