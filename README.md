@@ -78,6 +78,9 @@ See what's coming next: **[ROADMAP.md](ROADMAP.md)**
 - Docker & Docker Compose
 - Linux host with kernel 5.4+ (for redroid KVM support)
 - 8GB+ RAM recommended
+- An **Anthropic API key** (`ANTHROPIC_API_KEY`) - required for the AI agent
+  that drives natural-language device control. Get one at
+  [console.anthropic.com](https://console.anthropic.com/).
 
 ### Setup
 
@@ -89,7 +92,7 @@ cd mobiledroid
 # Copy environment file
 cp .env.example .env
 
-# Edit .env and add your API keys
+# Edit .env and add your API keys - ANTHROPIC_API_KEY is required
 nano .env
 
 # Start the platform
@@ -99,6 +102,13 @@ docker-compose -f docker/docker-compose.yml up -d
 # UI:  http://<docker-host>:3100
 # API: http://<docker-host>:8100
 ```
+
+> **Deploying to EC2?** `scripts/deploy-to-ec2.sh` writes the key into the
+> remote `.env`, so it must be resolvable locally first - either exported
+> (`export ANTHROPIC_API_KEY=sk-ant-...`) or present in your local `.env`,
+> which the script reads as a fallback. The script exits with an error if the
+> key is unset rather than deploying a broken configuration. Never hardcode
+> the key in the script; this repository is public.
 
 ### Default Ports
 

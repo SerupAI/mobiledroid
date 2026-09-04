@@ -32,6 +32,17 @@ The app runs on AWS EC2 at `34.235.77.142`.
 
 ### Deploy Code Changes
 
+The deploy script requires `ANTHROPIC_API_KEY` to be resolvable locally - it
+writes the key into the remote `.env`. Export it, or put it in a local `.env`
+(which the script reads as a fallback). The script exits 1 if it is unset
+rather than deploying a broken key:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Never hardcode the key in the script - this repo is public.
+
 ```bash
 # Use the deploy script (captures git commit SHA)
 ./scripts/deploy-to-ec2.sh
