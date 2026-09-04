@@ -105,7 +105,17 @@ SSH_KEY="infra/aws/mobiledroid-key.pem"
 # Load ANTHROPIC_API_KEY from the environment, falling back to a local .env.
 # Never hardcode secrets in this script - it is committed to a public repo.
 if [[ -z "${ANTHROPIC_API_KEY:-}" && -f .env ]]; then
-    ANTHROPIC_API_KEY=$(grep -E '^ANTHROPIC_API_KEY=' .env | tail -1 | cut -d= -f2-)
+    ANTHROPIC_API_KEY=$(grep -E '^[[:space:]]*ANTHROPIC_API_KEY=' .env | tail -1 | cut -d= -f2-)
+    # Normalize the raw .env value: a stray CR (CRLF file), surrounding
+    # whitespace, or wrapping quotes would otherwise travel into the key and
+    # surface as a 401 at agent runtime instead of failing here.
+    ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY%$'\r'}"
+    ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY#"${ANTHROPIC_API_KEY%%[![:space:]]*}"}"
+    ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY%"${ANTHROPIC_API_KEY##*[![:space:]]}"}"
+    if [[ ${#ANTHROPIC_API_KEY} -ge 2 ]] \
+       && { [[ $ANTHROPIC_API_KEY == \"*\" ]] || [[ $ANTHROPIC_API_KEY == \'*\' ]]; }; then
+        ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:1:${#ANTHROPIC_API_KEY}-2}"
+    fi
 fi
 
 if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
