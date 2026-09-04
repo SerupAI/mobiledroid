@@ -102,6 +102,31 @@ EC2_HOST="34.235.77.142"
 EC2_USER="ubuntu"
 SSH_KEY="infra/aws/mobiledroid-key.pem"
 
+# Load ANTHROPIC_API_KEY from the environment, falling back to a local .env.
+# Never hardcode secrets in this script - it is committed to a public repo.
+if [[ -z "${ANTHROPIC_API_KEY:-}" && -f .env ]]; then
+    ANTHROPIC_API_KEY=$(grep -E '^ANTHROPIC_API_KEY=' .env | tail -1 | cut -d= -f2-)
+fi
+
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    echo "ERROR: ANTHROPIC_API_KEY is not set"
+    echo "Export it or add it to a local .env before deploying:"
+    echo "  export ANTHROPIC_API_KEY=sk-ant-..."
+    exit 1
+fi
+
+# Write the remote .env, passing the key over stdin so it never lands in the
+# remote process list or in local shell history.
+#   $1: "always" to overwrite an existing .env, "if-missing" to leave it alone
+write_remote_env() {
+    printf '%s\n' "$ANTHROPIC_API_KEY" | ssh -i $SSH_KEY $EC2_USER@$EC2_HOST \
+      "cd /home/ubuntu/mobiledroid && read -r api_key && \
+       if [ '$1' = 'always' ] || [ ! -f .env ]; then \
+         cp .env.example .env && \
+         printf 'ANTHROPIC_API_KEY=%s\nDEBUG=true\nNEXT_PUBLIC_DEBUG=true\n' \"\$api_key\" >> .env; \
+       fi"
+}
+
 if [ "$DEPLOY_MODE" = "tag" ]; then
     echo "Deploying tag $TAG..."
     
@@ -139,7 +164,7 @@ if [ "$DEPLOY_MODE" = "tag" ]; then
     
     # Ensure .env file exists from .env.example and add required keys
     echo "Setting up .env file on EC2..."
-    ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && cp .env.example .env && echo 'ANTHROPIC_API_KEY=sk-ant-api03-_yF6CqzT_gPXr5Wz_5rF2vTQeOg8wG5ow0uLtKyS8Xa4_Z6N8-vJpOJlE0lZ8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8ZZ8ZAA' >> .env && echo 'DEBUG=true' >> .env && echo 'NEXT_PUBLIC_DEBUG=true' >> .env"
+    write_remote_env always
     
 else
     # Sync local code to EC2
@@ -157,7 +182,7 @@ else
       
     # Ensure .env file exists if not already synced
     echo "Ensuring .env file exists on EC2..."
-    ssh -i $SSH_KEY $EC2_USER@$EC2_HOST "cd /home/ubuntu/mobiledroid && if [ ! -f .env ]; then cp .env.example .env && echo 'ANTHROPIC_API_KEY=sk-ant-api03-_yF6CqzT_gPXr5Wz_5rF2vTQeOg8wG5ow0uLtKyS8Xa4_Z6N8-vJpOJlE0lZ8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8Z8ZZ8ZAA' >> .env && echo 'DEBUG=true' >> .env && echo 'NEXT_PUBLIC_DEBUG=true' >> .env; fi"
+    write_remote_env if-missing
 fi
 
 # Build and restart containers on EC2
