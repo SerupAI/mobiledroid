@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Pin the file-tracing root. Next 15 otherwise infers it from the nearest
+  // lockfile, which can resolve outside the repo and produce a wrong
+  // standalone bundle.
+  outputFileTracingRoot: __dirname,
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

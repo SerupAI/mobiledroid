@@ -80,3 +80,6 @@ tmp/
 temp/
 *.tmp
 omniparser-api/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
